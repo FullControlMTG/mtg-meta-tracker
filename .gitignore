@@ -1,0 +1,24 @@
+# Go
+/backend/bin/
+/backend/server
+*.test
+
+# Node / Next.js
+node_modules/
+/frontend/.next/
+/frontend/out/
+/frontend/.turbo/
+
+# env / secrets
+.env
+.env.local
+*.local
+
+# db
+*.db
+pgdata/
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/

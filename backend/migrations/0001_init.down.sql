@@ -1,0 +1,15 @@
+DROP TABLE IF EXISTS jobs;
+DROP TABLE IF EXISTS deck_metric_stats;
+DROP TABLE IF EXISTS meta_snapshot;
+DROP TABLE IF EXISTS card_pair_stats;
+DROP TABLE IF EXISTS card_stats;
+DROP TABLE IF EXISTS color_stats;
+DROP TABLE IF EXISTS analytics_runs;
+DROP TABLE IF EXISTS decklist_cards;
+DROP TABLE IF EXISTS decklists;
+DROP TABLE IF EXISTS cube_cards;
+DROP TABLE IF EXISTS cards;
+DROP TABLE IF EXISTS cubes;
+DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS oauth_accounts;
+DROP TABLE IF EXISTS users;
