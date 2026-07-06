@@ -1,0 +1,5 @@
+bin/
+server
+*.test
+.env
+.env.*
