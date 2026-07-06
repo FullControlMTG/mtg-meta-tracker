@@ -1,4 +1,3 @@
-// Package ingest pulls a cube's card pool from Moxfield + Scryfall into the DB.
 package ingest
 
 import (
@@ -24,8 +23,6 @@ func NewSyncer(s *store.Store, scry *scryfall.Client, mox *moxfield.Client) *Syn
 	return &Syncer{store: s, scry: scry, mox: mox}
 }
 
-// SyncCube refreshes one cube: fetch its Moxfield list, resolve cards via
-// Scryfall, cache them, and diff the cube's active pool.
 func (s *Syncer) SyncCube(ctx context.Context, cubeID uuid.UUID) error {
 	cube, err := s.store.GetCube(ctx, cubeID)
 	if err != nil {

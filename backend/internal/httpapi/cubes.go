@@ -11,7 +11,6 @@ import (
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/moxfield"
 )
 
-// cubeView augments a cube with its active card count.
 func (s *Server) cubeView(r *http.Request, c *domain.Cube) map[string]any {
 	count, _ := s.store.CountActiveCubeCards(r.Context(), c.ID)
 	return map[string]any{"cube": c, "card_count": count}

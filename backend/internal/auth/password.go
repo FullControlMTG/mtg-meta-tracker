@@ -1,4 +1,3 @@
-// Package auth provides password hashing, opaque tokens, and session helpers.
 package auth
 
 import (
@@ -23,7 +22,6 @@ const (
 
 var ErrInvalidHash = errors.New("invalid password hash")
 
-// HashPassword returns an encoded argon2id hash string.
 func HashPassword(password string) (string, error) {
 	salt := make([]byte, argonSaltLen)
 	if _, err := rand.Read(salt); err != nil {
@@ -36,7 +34,6 @@ func HashPassword(password string) (string, error) {
 		base64.RawStdEncoding.EncodeToString(key)), nil
 }
 
-// VerifyPassword reports whether password matches the encoded hash.
 func VerifyPassword(encoded, password string) (bool, error) {
 	parts := strings.Split(encoded, "$")
 	if len(parts) != 6 || parts[1] != "argon2id" {

@@ -13,7 +13,6 @@ func (s *Store) CreateSession(ctx context.Context, sess *domain.Session) error {
 	return err
 }
 
-// GetValidSessionUser returns the user for a non-expired session id.
 func (s *Store) GetValidSessionUser(ctx context.Context, sessionID string) (*domain.User, error) {
 	return scanUser(s.pool.QueryRow(ctx, `
 		SELECT u.id, u.username, u.email, u.display_name, u.bio, u.avatar_url,
@@ -27,7 +26,6 @@ func (s *Store) DeleteSession(ctx context.Context, sessionID string) error {
 	return err
 }
 
-// DeleteUserSessions revokes all sessions for a user (e.g. on delete).
 func (s *Store) DeleteUserSessions(ctx context.Context, userID any) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1`, userID)
 	return err

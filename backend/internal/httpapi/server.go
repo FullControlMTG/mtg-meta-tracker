@@ -1,4 +1,3 @@
-// Package httpapi wires the HTTP router, middleware, and handlers.
 package httpapi
 
 import (
@@ -31,23 +30,19 @@ func (s *Server) Router() http.Handler {
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/health", s.handleHealth)
 
-		// auth
 		r.Post("/auth/login", s.handleLogin)
 		r.Post("/auth/logout", s.handleLogout)
 		r.Get("/auth/me", s.handleMe)
 		r.Post("/auth/accept-invite", s.handleAcceptInvite)
 
-		// users
 		r.Get("/users", s.handleListUsers)
 		r.Get("/users/{username}", s.handleGetUser)
 		r.With(s.requireAuth).Patch("/users/{id}", s.handlePatchUser)
 		r.With(s.requireAdmin).Delete("/users/{id}", s.handleDeleteUser)
 
-		// cubes (public reads)
 		r.Get("/cubes", s.handleListCubes)
 		r.Get("/cubes/{id}", s.handleGetCube)
 
-		// admin
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireAdmin)
 			r.Post("/admin/invites", s.handleCreateInvite)
@@ -67,8 +62,6 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "time": time.Now().UTC()})
 }
 
-// --- helpers ---
-
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -85,7 +78,6 @@ func decodeJSON(r *http.Request, dst any) error {
 	return dec.Decode(dst)
 }
 
-// statusForStoreErr maps store errors to HTTP codes.
 func statusForStoreErr(err error) int {
 	if errors.Is(err, store.ErrNotFound) {
 		return http.StatusNotFound

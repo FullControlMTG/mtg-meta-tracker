@@ -9,8 +9,6 @@ import (
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
 )
 
-// resolveCaller attaches a Caller (Public or Authenticated) built from the
-// session cookie to every request context.
 func (s *Server) resolveCaller(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		caller := appctx.PublicCaller
@@ -54,7 +52,6 @@ func roleFromString(role string) appctx.Role {
 	return appctx.RoleUser
 }
 
-// setSessionCookie / clearSessionCookie manage the session cookie.
 func (s *Server) setSessionCookie(w http.ResponseWriter, value string, expires time.Time) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.cfg.SessionCookieName,

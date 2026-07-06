@@ -1,4 +1,3 @@
-// Command server is the MTG Meta Tracker backend entrypoint.
 package main
 
 import (
@@ -44,12 +43,10 @@ func main() {
 		log.Fatalf("bootstrap admin: %v", err)
 	}
 
-	// External clients + ingest.
 	scry := scryfall.New(cfg.ScryfallUserAgent, cfg.ScryfallMinInterval)
 	mox := moxfield.New(cfg.ScryfallUserAgent)
 	syncer := ingest.NewSyncer(st, scry, mox)
 
-	// Background job worker.
 	workerCtx, cancelWorker := context.WithCancel(rootCtx)
 	defer cancelWorker()
 	worker := jobs.NewWorker(st, 2*time.Second)
@@ -68,7 +65,6 @@ func main() {
 	})
 	go worker.Run(workerCtx)
 
-	// HTTP server.
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           httpapi.New(st, cfg).Router(),
@@ -91,7 +87,6 @@ func main() {
 	_ = srv.Shutdown(shutdownCtx)
 }
 
-// bootstrapAdmin seeds the first admin from env, but only when no users exist.
 func bootstrapAdmin(ctx context.Context, st *store.Store, cfg config.Config) error {
 	if cfg.BootstrapAdminUsername == "" || cfg.BootstrapAdminEmail == "" || cfg.BootstrapAdminPassword == "" {
 		return nil

@@ -38,7 +38,6 @@ func (s *Store) GetUserByUsername(ctx context.Context, username string) (*domain
 	return scanUser(s.pool.QueryRow(ctx, `SELECT `+userCols+` FROM users WHERE lower(username)=lower($1)`, username))
 }
 
-// GetUserByLogin matches either email or username (case-insensitive).
 func (s *Store) GetUserByLogin(ctx context.Context, login string) (*domain.User, error) {
 	return scanUser(s.pool.QueryRow(ctx, `SELECT `+userCols+`
 		FROM users WHERE lower(email)=lower($1) OR lower(username)=lower($1)`, login))
@@ -61,7 +60,7 @@ func (s *Store) ListUsers(ctx context.Context) ([]domain.User, error) {
 	return out, rows.Err()
 }
 
-// UpdateUserProfile updates mutable profile fields (and role, admin-gated by caller).
+// Writes role too; the caller must admin-gate role changes.
 func (s *Store) UpdateUserProfile(ctx context.Context, u *domain.User) error {
 	ct, err := s.pool.Exec(ctx, `
 		UPDATE users SET display_name=$2, bio=$3, avatar_url=$4, role=$5, updated_at=now()

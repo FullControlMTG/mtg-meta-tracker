@@ -9,8 +9,7 @@ import (
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
 )
 
-// EnqueueJob adds a pending job. If dedupKey is non-empty and a pending job with
-// that key already exists, this is a no-op (bursts of triggers coalesce).
+// A non-empty dedupKey coalesces with an existing pending job of that key.
 func (s *Store) EnqueueJob(ctx context.Context, jobType string, payload any, dedupKey string) error {
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -28,7 +27,6 @@ func (s *Store) EnqueueJob(ctx context.Context, jobType string, payload any, ded
 	return err
 }
 
-// ClaimNextJob atomically grabs the next pending job and marks it running.
 // Returns (nil, ErrNotFound) when the queue is empty.
 func (s *Store) ClaimNextJob(ctx context.Context) (*domain.Job, error) {
 	var j domain.Job

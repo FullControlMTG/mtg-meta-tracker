@@ -1,5 +1,3 @@
-// Package scryfall is a small, rate-limited client for the Scryfall API.
-// It resolves card names in batches via POST /cards/collection (<=75 per call).
 package scryfall
 
 import (
@@ -38,8 +36,7 @@ func New(userAgent string, minInterval time.Duration) *Client {
 	}
 }
 
-// throttle enforces a minimum spacing between outbound requests (Scryfall asks
-// for ~50-100ms). Safe for concurrent callers.
+// Scryfall asks for ~50-100ms spacing between requests.
 func (c *Client) throttle() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -79,7 +76,6 @@ type scryCard struct {
 	} `json:"card_faces"`
 }
 
-// ResolveByNames returns the cards found for the given names plus any not found.
 func (c *Client) ResolveByNames(ctx context.Context, names []string) (cards []domain.Card, notFound []string, err error) {
 	for start := 0; start < len(names); start += batchSize {
 		end := start + batchSize
@@ -148,12 +144,12 @@ func (c *Client) doJSON(ctx context.Context, body []byte, out any) error {
 			continue
 		}
 		if res.StatusCode == http.StatusTooManyRequests || res.StatusCode >= 500 {
-			res.Body.Close()
+			_ = res.Body.Close()
 			lastErr = fmt.Errorf("scryfall status %d", res.StatusCode)
 			time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
 			continue
 		}
-		defer res.Body.Close()
+		defer func() { _ = res.Body.Close() }()
 		if res.StatusCode != http.StatusOK {
 			return fmt.Errorf("scryfall status %d", res.StatusCode)
 		}

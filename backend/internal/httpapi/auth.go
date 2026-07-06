@@ -13,7 +13,6 @@ import (
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
 )
 
-// startSession creates a session row + cookie for a user.
 func (s *Server) startSession(ctx context.Context, w http.ResponseWriter, userID uuid.UUID) error {
 	raw, hash, err := auth.GenerateToken()
 	if err != nil {

@@ -19,7 +19,6 @@ func TestColorlessAndOrdering(t *testing.T) {
 	if ParseColorIdentity(nil).String() != "C" {
 		t.Fatal("empty identity should render C")
 	}
-	// canonical WUBRG order regardless of input order
 	ci := ParseColorIdentity([]string{"G", "W", "B"})
 	if ci.String() != "WBG" {
 		t.Fatalf("string = %q want WBG", ci.String())

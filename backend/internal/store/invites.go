@@ -29,7 +29,6 @@ func (s *Store) CreateInvite(ctx context.Context, inv *domain.Invite) error {
 	).Scan(&inv.ID, &inv.CreatedAt)
 }
 
-// GetOpenInviteByTokenHash returns a not-yet-accepted, non-expired invite.
 func (s *Store) GetOpenInviteByTokenHash(ctx context.Context, tokenHash string) (*domain.Invite, error) {
 	return scanInvite(s.pool.QueryRow(ctx, `SELECT `+inviteCols+`
 		FROM invites WHERE token_hash=$1 AND accepted_at IS NULL AND expires_at > now()`, tokenHash))

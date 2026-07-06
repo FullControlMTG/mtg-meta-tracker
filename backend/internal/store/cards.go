@@ -8,7 +8,6 @@ import (
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
 )
 
-// UpsertCard inserts or refreshes a cached Scryfall card.
 func (s *Store) UpsertCard(ctx context.Context, c *domain.Card) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO cards (scryfall_id, oracle_id, name, mana_cost, cmc, type_line,
@@ -28,15 +27,13 @@ func (s *Store) UpsertCard(ctx context.Context, c *domain.Card) error {
 	return err
 }
 
-// SyncCubeCards makes the cube's active pool exactly activeIDs: cards no longer
-// present are soft-removed (is_active=false, removed_at set); present cards are
-// (re)activated. History is preserved so old decklists still resolve.
+// Absent cards are soft-removed (not deleted) so old decklists still resolve.
 func (s *Store) SyncCubeCards(ctx context.Context, cubeID uuid.UUID, activeIDs []uuid.UUID) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	idStrs := make([]string, len(activeIDs))
 	for i, id := range activeIDs {

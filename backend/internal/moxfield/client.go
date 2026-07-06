@@ -1,8 +1,3 @@
-// Package moxfield fetches a cube's card list from a Moxfield deck.
-//
-// The Moxfield API is unofficial; this is deliberately a thin adapter so it can
-// be swapped for manual paste / CSV import if access changes (see docs/DESIGN.md
-// §5). A cube is stored on Moxfield as a deck, so we read the deck's boards.
 package moxfield
 
 import (
@@ -25,8 +20,6 @@ func New(userAgent string) *Client {
 
 var publicIDRe = regexp.MustCompile(`decks/(?:all/)?([A-Za-z0-9_-]+)`)
 
-// ParsePublicID extracts the public id from a Moxfield deck URL, or returns the
-// input unchanged if it's already a bare id.
 func ParsePublicID(urlOrID string) string {
 	if m := publicIDRe.FindStringSubmatch(urlOrID); m != nil {
 		return m[1]
@@ -46,7 +39,6 @@ type deckResponse struct {
 	} `json:"boards"`
 }
 
-// FetchCubeCardNames returns the distinct mainboard card names for a deck.
 func (c *Client) FetchCubeCardNames(ctx context.Context, publicID string) ([]string, error) {
 	url := fmt.Sprintf("https://api2.moxfield.com/v3/decks/all/%s", publicID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -60,7 +52,7 @@ func (c *Client) FetchCubeCardNames(ctx context.Context, publicID string) ([]str
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("moxfield status %d for deck %s", res.StatusCode, publicID)
 	}

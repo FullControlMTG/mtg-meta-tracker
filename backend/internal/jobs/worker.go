@@ -1,4 +1,3 @@
-// Package jobs runs the background worker that drains the jobs queue.
 package jobs
 
 import (
@@ -11,7 +10,6 @@ import (
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/store"
 )
 
-// Handler processes a job of a given type.
 type Handler func(ctx context.Context, payload json.RawMessage) error
 
 type Worker struct {
@@ -26,7 +24,6 @@ func NewWorker(s *store.Store, pollInterval time.Duration) *Worker {
 
 func (w *Worker) Register(jobType string, h Handler) { w.handlers[jobType] = h }
 
-// Run drains the queue until ctx is cancelled.
 func (w *Worker) Run(ctx context.Context) {
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()

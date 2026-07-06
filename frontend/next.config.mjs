@@ -7,7 +7,6 @@ const nextConfig = {
     return [{ source: "/api/:path*", destination: `${backend}/api/:path*` }];
   },
   images: {
-    // Scryfall card images
     remotePatterns: [{ protocol: "https", hostname: "cards.scryfall.io" }],
   },
 };

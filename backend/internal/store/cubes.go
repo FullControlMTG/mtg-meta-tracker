@@ -79,7 +79,6 @@ func (s *Store) SetCubeSynced(ctx context.Context, id uuid.UUID, t time.Time) er
 	return err
 }
 
-// CountActiveCubeCards returns how many cards are currently in the pool.
 func (s *Store) CountActiveCubeCards(ctx context.Context, cubeID uuid.UUID) (int, error) {
 	var n int
 	err := s.pool.QueryRow(ctx,

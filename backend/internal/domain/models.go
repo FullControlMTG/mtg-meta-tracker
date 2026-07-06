@@ -25,7 +25,7 @@ type User struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
-// Public returns a view safe to expose to anonymous callers (no email/hash).
+// Anonymous-safe view: omits email/hash.
 func (u User) Public() map[string]any {
 	return map[string]any{
 		"id":           u.ID,
