@@ -78,17 +78,33 @@ pipeline {
 
         stage('Lint & Type-check') {
             steps {
+                // Ship the source as a build context instead of bind-mounting
+                // $WORKSPACE. The job name contains spaces and the agent may talk
+                // to a socket-shared daemon (DinD), either of which makes a host
+                // bind mount land empty; `docker build` transfers context to the
+                // daemon the same way the compose stages do, so it is immune.
+                // Images are throwaway — the check passes/fails on the RUN exit code.
                 sh '''
                     set -eu
-                    docker run --rm -v "$WORKSPACE/backend:/src" -w /src golang:1.22-alpine \
-                        sh -c 'go vet ./... && go build ./...' \
-                        || { echo "backend lint/compile failed" >&2; exit 1; }
+                    docker build --rm -f - backend <<'DOCKERFILE'
+FROM golang:1.22-alpine
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN go vet ./... && go build ./...
+DOCKERFILE
                 '''
                 sh '''
                     set -eu
-                    docker run --rm -v "$WORKSPACE/frontend:/app" -w /app node:20-alpine \
-                        sh -c 'npm install --no-audit --no-fund && npx --yes tsc --noEmit' \
-                        || { echo "frontend type-check failed" >&2; exit 1; }
+                    docker build --rm -f - frontend <<'DOCKERFILE'
+FROM node:20-alpine
+WORKDIR /app
+COPY package.json ./
+RUN npm install --no-audit --no-fund
+COPY . .
+RUN npx --yes tsc --noEmit
+DOCKERFILE
                 '''
             }
         }
