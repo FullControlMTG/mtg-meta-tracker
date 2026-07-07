@@ -23,11 +23,11 @@ pipeline {
     environment {
         // Secrets — pulled from Jenkins credentials, never hardcoded.
         DISCORD_WEBHOOK          = credentials('discord-pws-builds-channel-webhook')
-        POSTGRES_PASSWORD        = credentials('mtg-postgres-password')
-        REVALIDATE_SECRET        = credentials('mtg-revalidate-secret')
-        BOOTSTRAP_ADMIN_PASSWORD = credentials('mtg-bootstrap-admin-password')
-        GOOGLE_CLIENT_ID         = credentials('mtg-google-client-id')
-        GOOGLE_CLIENT_SECRET     = credentials('mtg-google-client-secret')
+        POSTGRES_PASSWORD        = credentials('mtg-meta-tracker-postgres-password')
+        REVALIDATE_SECRET        = credentials('mtg-meta-tracker-revalidate-secret')
+        BOOTSTRAP_ADMIN_PASSWORD = credentials('mtg-meta-tracker-bootstrap-admin-password')
+        GOOGLE_CLIENT_ID         = credentials('mtg-meta-tracker-google-client-id')
+        GOOGLE_CLIENT_SECRET     = credentials('mtg-meta-tracker-google-client-secret')
 
         // Non-secret configuration.
         POSTGRES_USER            = 'mtg'
