@@ -14,9 +14,10 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mtg}
       POSTGRES_DB: ${POSTGRES_DB:-mtg_meta}
     volumes:
-      - ./pgdata:/var/lib/postgresql/data
-      # Auto-applied on first init only (empty data dir); no-op on existing pgdata.
-      - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+      # Durable host storage. One subfolder per service under the shared root; the
+      # daemon creates it on first run if it has permission. Schema is applied by the
+      # backend on startup (store.EnsureSchema), not via docker-entrypoint-initdb.d.
+      - /pwspool/software/mtg-meta-tracker/postgres:/var/lib/postgresql/data
     networks:
       - appnet
     healthcheck:

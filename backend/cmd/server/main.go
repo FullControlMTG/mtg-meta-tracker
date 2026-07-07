@@ -39,6 +39,10 @@ func main() {
 
 	st := store.New(pool)
 
+	if err := st.EnsureSchema(rootCtx); err != nil {
+		log.Fatalf("ensure schema: %v", err)
+	}
+
 	if err := bootstrapAdmin(rootCtx, st, cfg); err != nil {
 		log.Fatalf("bootstrap admin: %v", err)
 	}

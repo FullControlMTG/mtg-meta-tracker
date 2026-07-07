@@ -1,0 +1,3 @@
+# Scratch output dir for `make db-dump` (db/dump.sql) and `make db-schema`
+# (db/schema.generated.sql); both are gitignored. The canonical schema lives at
+# backend/internal/store/schema.sql.

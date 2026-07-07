@@ -18,6 +18,7 @@ node_modules/
 *.db
 pgdata/
 /db/dump.sql
+/db/schema.generated.sql
 
 # os / editor
 .DS_Store

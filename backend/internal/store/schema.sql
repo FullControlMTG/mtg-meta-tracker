@@ -1,13 +1,15 @@
 -- MTG Meta Tracker — database schema (PostgreSQL)
 --
--- Single source of truth for the schema. Postgres auto-applies this file on first
--- init via /docker-entrypoint-initdb.d (see docker-compose.yml `db` service), so a
--- fresh database comes up ready. It only runs when the data directory is empty; an
--- existing populated `pgdata` is left untouched.
+-- Single source of truth for the schema. Hand-maintained and fully idempotent
+-- (CREATE ... IF NOT EXISTS): the backend embeds this file and applies it on every
+-- startup via store.EnsureSchema, so a fresh or partially-initialized database
+-- converges to this shape without touching existing data.
 --
--- Editing the schema: change this file directly, then reset a dev DB (`rm -rf pgdata`
--- and `make db-up`) to re-apply. Regenerate from a live DB with `make db-schema`.
--- Back up / restore data with `make db-dump` / `make db-restore`.
+-- Editing the schema: change this file directly. IF NOT EXISTS is additive-only — it
+-- never ALTERs an existing table, so changing a column/constraint on an already-created
+-- table needs a manual ALTER or a dev DB reset (remove the postgres data dir + restart).
+-- `make db-schema` writes a pg_dump to a scratch file for diffing only; do not paste its
+-- non-idempotent output over this file. Back up / restore data with `make db-dump` / `make db-restore`.
 --
 -- Color identity is a 5-bit bitset: W=1 U=2 B=4 R=8 G=16 (colorless=0).
 
@@ -16,7 +18,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";  -- gen_random_uuid()
 -- ---------------------------------------------------------------------------
 -- Users, auth
 -- ---------------------------------------------------------------------------
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     username      text NOT NULL UNIQUE,
     email         text NOT NULL UNIQUE,
@@ -29,7 +31,7 @@ CREATE TABLE users (
     updated_at    timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE oauth_accounts (
+CREATE TABLE IF NOT EXISTS oauth_accounts (
     id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id             uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     provider            text NOT NULL CHECK (provider IN ('google')),
@@ -38,17 +40,17 @@ CREATE TABLE oauth_accounts (
     UNIQUE (provider, provider_account_id)
 );
 
-CREATE TABLE sessions (
+CREATE TABLE IF NOT EXISTS sessions (
     id         text PRIMARY KEY,             -- opaque random token (cookie value)
     user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     expires_at timestamptz NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_sessions_user ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 
 -- Admin-invites-only onboarding: no open registration. An admin creates an
 -- invite; the invitee redeems the token to set username + password.
-CREATE TABLE invites (
+CREATE TABLE IF NOT EXISTS invites (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     email      text NOT NULL,
     role       text NOT NULL DEFAULT 'user' CHECK (role IN ('user','admin')),
@@ -58,12 +60,12 @@ CREATE TABLE invites (
     accepted_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_invites_open ON invites(lower(email)) WHERE accepted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_invites_open ON invites(lower(email)) WHERE accepted_at IS NULL;
 
 -- ---------------------------------------------------------------------------
 -- Cube (card pool) + Scryfall card cache
 -- ---------------------------------------------------------------------------
-CREATE TABLE cubes (
+CREATE TABLE IF NOT EXISTS cubes (
     id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name             text NOT NULL,
     moxfield_public_id text UNIQUE,
@@ -72,7 +74,7 @@ CREATE TABLE cubes (
     created_at       timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE cards (
+CREATE TABLE IF NOT EXISTS cards (
     scryfall_id    uuid PRIMARY KEY,
     oracle_id      uuid,
     name           text NOT NULL,
@@ -92,10 +94,10 @@ CREATE TABLE cards (
     raw            jsonb,                                 -- full Scryfall payload
     updated_at     timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_cards_name        ON cards(lower(name));
-CREATE INDEX idx_cards_color_ident ON cards(color_identity);
+CREATE INDEX IF NOT EXISTS idx_cards_name        ON cards(lower(name));
+CREATE INDEX IF NOT EXISTS idx_cards_color_ident ON cards(color_identity);
 
-CREATE TABLE cube_cards (
+CREATE TABLE IF NOT EXISTS cube_cards (
     cube_id    uuid NOT NULL REFERENCES cubes(id) ON DELETE CASCADE,
     card_id    uuid NOT NULL REFERENCES cards(scryfall_id) ON DELETE CASCADE,
     is_active  boolean NOT NULL DEFAULT true,
@@ -103,12 +105,12 @@ CREATE TABLE cube_cards (
     removed_at timestamptz,
     PRIMARY KEY (cube_id, card_id)
 );
-CREATE INDEX idx_cube_cards_active ON cube_cards(cube_id) WHERE is_active;
+CREATE INDEX IF NOT EXISTS idx_cube_cards_active ON cube_cards(cube_id) WHERE is_active;
 
 -- ---------------------------------------------------------------------------
 -- Decklists (metadata + list + record, all together)
 -- ---------------------------------------------------------------------------
-CREATE TABLE decklists (
+CREATE TABLE IF NOT EXISTS decklists (
     id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     cube_id           uuid NOT NULL REFERENCES cubes(id) ON DELETE CASCADE,
     user_id           uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -136,11 +138,11 @@ CREATE TABLE decklists (
     updated_at        timestamptz NOT NULL DEFAULT now(),
     CHECK (wins + losses + draws <= games_played)
 );
-CREATE INDEX idx_decklists_user   ON decklists(user_id);
-CREATE INDEX idx_decklists_cube   ON decklists(cube_id);
-CREATE INDEX idx_decklists_color  ON decklists(color_identity);
+CREATE INDEX IF NOT EXISTS idx_decklists_user   ON decklists(user_id);
+CREATE INDEX IF NOT EXISTS idx_decklists_cube   ON decklists(cube_id);
+CREATE INDEX IF NOT EXISTS idx_decklists_color  ON decklists(color_identity);
 
-CREATE TABLE decklist_cards (
+CREATE TABLE IF NOT EXISTS decklist_cards (
     decklist_id uuid NOT NULL REFERENCES decklists(id) ON DELETE CASCADE,
     card_id     uuid REFERENCES cards(scryfall_id),      -- NULL if unresolved
     card_name   text NOT NULL,                           -- as written in the list
@@ -150,12 +152,12 @@ CREATE TABLE decklist_cards (
                   CHECK (board IN ('main','side','maybe')),
     PRIMARY KEY (decklist_id, card_name, board)
 );
-CREATE INDEX idx_decklist_cards_card ON decklist_cards(card_id);
+CREATE INDEX IF NOT EXISTS idx_decklist_cards_card ON decklist_cards(card_id);
 
 -- ---------------------------------------------------------------------------
 -- Analytics snapshots (see docs/DESIGN.md §4)
 -- ---------------------------------------------------------------------------
-CREATE TABLE analytics_runs (
+CREATE TABLE IF NOT EXISTS analytics_runs (
     id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     cube_id        uuid NOT NULL REFERENCES cubes(id) ON DELETE CASCADE,
     trigger        text NOT NULL,             -- deck_created|deck_updated|record_updated|cube_synced|manual|scheduled
@@ -168,9 +170,9 @@ CREATE TABLE analytics_runs (
     finished_at    timestamptz
 );
 -- at most one current run per cube
-CREATE UNIQUE INDEX idx_runs_current ON analytics_runs(cube_id) WHERE is_current;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_runs_current ON analytics_runs(cube_id) WHERE is_current;
 
-CREATE TABLE color_stats (
+CREATE TABLE IF NOT EXISTS color_stats (
     run_id        uuid NOT NULL REFERENCES analytics_runs(id) ON DELETE CASCADE,
     facet         text NOT NULL CHECK (facet IN ('exact_identity','single_color','color_count')),
     facet_key     smallint NOT NULL,
@@ -184,7 +186,7 @@ CREATE TABLE color_stats (
     PRIMARY KEY (run_id, facet, facet_key)
 );
 
-CREATE TABLE card_stats (
+CREATE TABLE IF NOT EXISTS card_stats (
     run_id         uuid NOT NULL REFERENCES analytics_runs(id) ON DELETE CASCADE,
     card_id        uuid NOT NULL REFERENCES cards(scryfall_id),
     deck_count     int NOT NULL,
@@ -199,9 +201,9 @@ CREATE TABLE card_stats (
     wilson_lower   numeric,           -- ranking-safe lower bound
     PRIMARY KEY (run_id, card_id)
 );
-CREATE INDEX idx_card_stats_lift ON card_stats(run_id, winrate_lift DESC);
+CREATE INDEX IF NOT EXISTS idx_card_stats_lift ON card_stats(run_id, winrate_lift DESC);
 
-CREATE TABLE card_pair_stats (
+CREATE TABLE IF NOT EXISTS card_pair_stats (
     run_id       uuid NOT NULL REFERENCES analytics_runs(id) ON DELETE CASCADE,
     card_a_id    uuid NOT NULL REFERENCES cards(scryfall_id),
     card_b_id    uuid NOT NULL REFERENCES cards(scryfall_id),
@@ -213,9 +215,9 @@ CREATE TABLE card_pair_stats (
     PRIMARY KEY (run_id, card_a_id, card_b_id),
     CHECK (card_a_id <> card_b_id)
 );
-CREATE INDEX idx_pair_stats_a ON card_pair_stats(run_id, card_a_id, lift DESC);
+CREATE INDEX IF NOT EXISTS idx_pair_stats_a ON card_pair_stats(run_id, card_a_id, lift DESC);
 
-CREATE TABLE meta_snapshot (
+CREATE TABLE IF NOT EXISTS meta_snapshot (
     run_id          uuid PRIMARY KEY REFERENCES analytics_runs(id) ON DELETE CASCADE,
     total_decks     int NOT NULL,
     total_games     int NOT NULL,
@@ -226,7 +228,7 @@ CREATE TABLE meta_snapshot (
     multi_share     numeric
 );
 
-CREATE TABLE deck_metric_stats (
+CREATE TABLE IF NOT EXISTS deck_metric_stats (
     run_id     uuid NOT NULL REFERENCES analytics_runs(id) ON DELETE CASCADE,
     metric     text NOT NULL,          -- e.g. 'avg_cmc', 'color_count', 'creature_count'
     bucket     text NOT NULL,          -- bucket label
@@ -238,7 +240,7 @@ CREATE TABLE deck_metric_stats (
 -- ---------------------------------------------------------------------------
 -- Job queue (trigger-driven recompute + scheduled syncs)
 -- ---------------------------------------------------------------------------
-CREATE TABLE jobs (
+CREATE TABLE IF NOT EXISTS jobs (
     id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     type         text NOT NULL,        -- recompute_analytics | sync_cube | refresh_cards
     payload      jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -253,5 +255,5 @@ CREATE TABLE jobs (
     created_at   timestamptz NOT NULL DEFAULT now()
 );
 -- only one pending job per dedup_key
-CREATE UNIQUE INDEX idx_jobs_dedup ON jobs(dedup_key) WHERE status = 'pending';
-CREATE INDEX idx_jobs_pending ON jobs(scheduled_at) WHERE status = 'pending';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_dedup ON jobs(dedup_key) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_jobs_pending ON jobs(scheduled_at) WHERE status = 'pending';
