@@ -57,10 +57,10 @@ services:
     networks:
       - appnet
 
-  <SERVICE_NAME>:
+  frontend:
     build:
       context: .
-    container_name: <SERVICE_NAME>
+    container_name: frontend
     restart: unless-stopped
     environment:
       BACKEND_ORIGIN: http://backend:8080
@@ -74,7 +74,7 @@ services:
       - traefik.enable=true
       # Container is multi-homed; tell Traefik which network to route on.
       - traefik.docker.network=traefik
-      - traefik.http.routers.<ROUTER_NAME>.rule=Host(`<DOMAIN>`)
-      - traefik.http.routers.<ROUTER_NAME>.tls=true
-      - traefik.http.routers.<ROUTER_NAME>.tls.certresolver=lets-encrypt
-      - traefik.http.services.<ROUTER_NAME>.loadbalancer.server.port=<INTERNAL_PORT>
+      - traefik.http.routers.mtg-frontend.rule=Host(`cube.whitney.rip`)
+      - traefik.http.routers.mtg-frontend.tls=true
+      - traefik.http.routers.mtg-frontend.tls.certresolver=lets-encrypt
+      - traefik.http.services.mtg-frontend.loadbalancer.server.port=3000

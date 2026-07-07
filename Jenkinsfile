@@ -37,10 +37,11 @@ pipeline {
         SESSION_TTL_HOURS        = '720'
         SCRYFALL_USER_AGENT      = 'mtg-meta-tracker/0.1 (contact: runyanjake@gmail.com)'
         SCRYFALL_MIN_INTERVAL_MS = '100'
-        // Public origin of the deployment — update to the real domain.
-        APP_BASE_URL             = 'https://mtg.example.com'
-        GOOGLE_REDIRECT_URL      = 'https://mtg.example.com/api/auth/google/callback'
-        REVALIDATE_URL           = 'https://mtg.example.com/api/revalidate'
+        // Public origin of the deployment.
+        APP_BASE_URL             = 'https://cube.whitney.rip'
+        GOOGLE_REDIRECT_URL      = 'https://cube.whitney.rip/api/auth/google/callback'
+        // Internal backend->frontend revalidation call, via the compose service DNS name.
+        REVALIDATE_URL           = 'http://frontend:3000/api/revalidate'
         BOOTSTRAP_ADMIN_USERNAME = 'admin'
         BOOTSTRAP_ADMIN_EMAIL    = 'runyanjake@gmail.com'
 
@@ -71,7 +72,6 @@ pipeline {
                     docker version >/dev/null 2>&1         || fail "docker is not available on the agent"
                     docker compose version >/dev/null 2>&1 || fail "docker compose plugin is not available"
                     docker network inspect traefik >/dev/null 2>&1 || fail "external docker network 'traefik' does not exist"
-                    docker compose config -q               || fail "docker-compose.yml is not well-formed"
                 '''
             }
         }
@@ -93,15 +93,14 @@ pipeline {
             }
         }
 
-        stage('Teardown') {
+        stage('Prepare Environment') {
             steps {
-                // Preserve the pgdata volume — no -v.
-                sh 'docker compose down --remove-orphans || { echo "teardown of previous deployment failed" >&2; exit 1; }'
-            }
-        }
-
-        stage('Build & Deploy') {
-            steps {
+                // Generate .env before ANY compose command. The backend service
+                // declares `env_file: .env`, so `docker compose` (including the
+                // Teardown `down` and the config validation below) hard-fails when
+                // .env is absent — which is the case on a clean workspace, since
+                // nothing else creates it. Writing it here makes every downstream
+                // compose invocation see a consistent, fully-populated file.
                 sh '''
                     set -eu
                     umask 077
@@ -125,6 +124,24 @@ POSTGRES_USER=${POSTGRES_USER}
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 POSTGRES_DB=${POSTGRES_DB}
 EOF
+                    docker compose config -q \
+                        || { echo "docker-compose.yml is not well-formed" >&2; exit 1; }
+                '''
+            }
+        }
+
+        stage('Teardown') {
+            steps {
+                // Preserve the pgdata volume — no -v.
+                sh 'docker compose down --remove-orphans || { echo "teardown of previous deployment failed" >&2; exit 1; }'
+            }
+        }
+
+        stage('Build & Deploy') {
+            steps {
+                // .env was generated in the Prepare Environment stage above.
+                sh '''
+                    set -eu
                     docker compose up -d --build --remove-orphans \
                         || { echo "build & deploy failed" >&2; exit 1; }
                 '''
