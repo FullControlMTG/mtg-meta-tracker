@@ -4,7 +4,7 @@ Phased build. Each phase is independently runnable/verifiable.
 
 ### Phase 0 — Foundation (this commit)
 - [x] Design doc + analytics schema (`docs/DESIGN.md`)
-- [x] Postgres migrations (`backend/migrations/0001_init.*.sql`)
+- [x] Postgres schema (`db/schema.sql`, auto-applied by Postgres on first init)
 - [x] Repo scaffold: `docker-compose.yml`, `Makefile`, `.env.example`
 - [x] Go module + `main.go` wiring skeleton, `appctx`, `config`, `domain/color`
 - [x] Next.js app skeleton + `/api` rewrite

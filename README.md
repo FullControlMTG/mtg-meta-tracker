@@ -22,12 +22,24 @@ the best in your favorite format's metagame.
 
 ```sh
 cp .env.example .env            # fill in secrets
-make db-up                      # start postgres (docker)
+make db-up                      # start postgres (applies db/schema.sql on first init)
 export DATABASE_URL=postgres://mtg:mtg@localhost:5432/mtg_meta?sslmode=disable
-make migrate-up                 # apply backend/migrations (needs golang-migrate)
 
 cd backend && go mod tidy && go run ./cmd/server   # :8080
 cd frontend && npm install && npm run dev          # :3000  (proxies /api -> :8080)
+```
+
+## Database
+
+The schema lives in [`db/schema.sql`](db/schema.sql) and Postgres applies it
+automatically the first time it initializes a data directory — no migration step or
+tooling required. Because it only runs on an empty `pgdata`, a change to the schema
+means editing `db/schema.sql` and re-initializing (`rm -rf pgdata && make db-up` in
+dev). Regenerate the file from a live DB with `make db-schema`.
+
+```sh
+make db-dump                       # back up schema + data -> db/dump.sql (gitignored)
+make db-restore FILE=db/dump.sql   # import a dump into the running db
 ```
 
 Phase 0 lays down the schema, the request-context (`appctx.Caller`) abstraction,

@@ -17,6 +17,7 @@ node_modules/
 # db
 *.db
 pgdata/
+/db/dump.sql
 
 # os / editor
 .DS_Store

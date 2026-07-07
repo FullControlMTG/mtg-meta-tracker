@@ -1,4 +1,14 @@
--- MTG Meta Tracker — initial schema (PostgreSQL)
+-- MTG Meta Tracker — database schema (PostgreSQL)
+--
+-- Single source of truth for the schema. Postgres auto-applies this file on first
+-- init via /docker-entrypoint-initdb.d (see docker-compose.yml `db` service), so a
+-- fresh database comes up ready. It only runs when the data directory is empty; an
+-- existing populated `pgdata` is left untouched.
+--
+-- Editing the schema: change this file directly, then reset a dev DB (`rm -rf pgdata`
+-- and `make db-up`) to re-apply. Regenerate from a live DB with `make db-schema`.
+-- Back up / restore data with `make db-dump` / `make db-restore`.
+--
 -- Color identity is a 5-bit bitset: W=1 U=2 B=4 R=8 G=16 (colorless=0).
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";  -- gen_random_uuid()
@@ -35,6 +45,20 @@ CREATE TABLE sessions (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_sessions_user ON sessions(user_id);
+
+-- Admin-invites-only onboarding: no open registration. An admin creates an
+-- invite; the invitee redeems the token to set username + password.
+CREATE TABLE invites (
+    id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    email      text NOT NULL,
+    role       text NOT NULL DEFAULT 'user' CHECK (role IN ('user','admin')),
+    token_hash text NOT NULL UNIQUE,               -- sha256 of the raw token
+    invited_by uuid REFERENCES users(id) ON DELETE SET NULL,
+    expires_at timestamptz NOT NULL,
+    accepted_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_invites_open ON invites(lower(email)) WHERE accepted_at IS NULL;
 
 -- ---------------------------------------------------------------------------
 -- Cube (card pool) + Scryfall card cache

@@ -56,7 +56,7 @@ backend/
     moxfield/            cube-list adapter
     analytics/           recompute engine + queries
     jobs/                queue + worker
-  migrations/            golang-migrate SQL
+db/schema.sql            full schema, auto-applied by Postgres on first init
 frontend/                Next.js app
 docs/                    this file + ROADMAP.md
 ```

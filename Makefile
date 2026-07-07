@@ -1,17 +1,19 @@
-.PHONY: db-up db-down migrate-up migrate-down backend frontend dev
+.PHONY: db-up db-down db-dump db-restore db-schema backend frontend dev
 
-db-up:        ## start postgres
+db-up:        ## start postgres (applies db/schema.sql on first init)
 	docker compose up -d db
 
 db-down:
 	docker compose down
 
-# requires golang-migrate (https://github.com/golang-migrate/migrate)
-migrate-up:
-	migrate -path backend/migrations -database "$(DATABASE_URL)" up
+db-dump:      ## back up schema + data -> db/dump.sql
+	docker compose exec -T db pg_dump -U mtg mtg_meta > db/dump.sql
 
-migrate-down:
-	migrate -path backend/migrations -database "$(DATABASE_URL)" down 1
+db-restore:   ## import a dump: make db-restore FILE=db/dump.sql
+	docker compose exec -T db psql -U mtg -d mtg_meta < $(FILE)
+
+db-schema:    ## regenerate committed db/schema.sql (run after a schema change)
+	docker compose exec -T db pg_dump --schema-only --no-owner --no-privileges -U mtg mtg_meta > db/schema.sql
 
 backend:
 	cd backend && go run ./cmd/server
