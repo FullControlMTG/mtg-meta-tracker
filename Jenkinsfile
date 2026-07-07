@@ -35,15 +35,15 @@ pipeline {
         HTTP_ADDR                = ':8080'
         SESSION_COOKIE_NAME      = 'mtg_session'
         SESSION_TTL_HOURS        = '720'
-        SCRYFALL_USER_AGENT      = 'mtg-meta-tracker/0.1 (contact: runyanjake@gmail.com)'
+        SCRYFALL_USER_AGENT      = 'mtg-meta-tracker/0.1 (contact: admin@fullcontrolmtg.com)'
         SCRYFALL_MIN_INTERVAL_MS = '100'
         // Public origin of the deployment.
-        APP_BASE_URL             = 'https://cube.whitney.rip'
-        GOOGLE_REDIRECT_URL      = 'https://cube.whitney.rip/api/auth/google/callback'
+        APP_BASE_URL             = 'https://cube.fullcontrolmtg.com'
+        GOOGLE_REDIRECT_URL      = 'https://cube.fullcontrolmtg.com/api/auth/google/callback'
         // Internal backend->frontend revalidation call, via the compose service DNS name.
         REVALIDATE_URL           = 'http://frontend:3000/api/revalidate'
         BOOTSTRAP_ADMIN_USERNAME = 'admin'
-        BOOTSTRAP_ADMIN_EMAIL    = 'runyanjake@gmail.com'
+        BOOTSTRAP_ADMIN_EMAIL    = 'admin@fullcontrolmtg.com'
 
         COMPOSE_PROJECT_NAME     = 'mtg-meta-tracker'
         BACKEND_CONTAINER        = 'mtg-backend'
