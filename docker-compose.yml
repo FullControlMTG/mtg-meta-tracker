@@ -7,21 +7,18 @@ networks:
 services:
   db:
     image: postgres:16-alpine
-    container_name: mtg-db
+    container_name: mtg-cube-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-mtg}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mtg}
-      POSTGRES_DB: ${POSTGRES_DB:-mtg_meta}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
     volumes:
-      # Durable host storage. One subfolder per service under the shared root; the
-      # daemon creates it on first run if it has permission. Schema is applied by the
-      # backend on startup (store.EnsureSchema), not via docker-entrypoint-initdb.d.
       - /pwspool/software/mtg-meta-tracker/postgres:/var/lib/postgresql/data
     networks:
       - appnet
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mtg} -d ${POSTGRES_DB:-mtg_meta}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?POSTGRES_USER is required} -d ${POSTGRES_DB:?POSTGRES_DB is required}"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -29,13 +26,13 @@ services:
   backend:
     build:
       context: ./backend
-    container_name: mtg-backend
+    container_name: mtg-cube-backend
     restart: unless-stopped
     env_file:
       - .env
     environment:
       HTTP_ADDR: ":8080"
-      DATABASE_URL: postgres://${POSTGRES_USER:-mtg}:${POSTGRES_PASSWORD:-mtg}@db:5432/${POSTGRES_DB:-mtg_meta}?sslmode=disable
+      DATABASE_URL: postgres://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/${POSTGRES_DB:?POSTGRES_DB is required}?sslmode=disable
     depends_on:
       db:
         condition: service_healthy
@@ -46,14 +43,12 @@ services:
     build:
       context: .
       args:
-        # Resolved into the /api/* rewrite at build time; the runtime var below
-        # does not affect the already-compiled proxy destination.
         BACKEND_ORIGIN: http://backend:8080
-    container_name: frontend
+    container_name: mtg-cube-frontend
     restart: unless-stopped
     environment:
       BACKEND_ORIGIN: http://backend:8080
-      REVALIDATE_SECRET: ${REVALIDATE_SECRET:-}
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET:?REVALIDATE_SECRET is required}
     depends_on:
       - backend
     networks:
@@ -61,8 +56,6 @@ services:
       - traefik
     labels:
       - traefik.enable=true
-      # Container is multi-homed; tell Traefik which network to route on.
-      - traefik.docker.network=traefik
       - traefik.http.routers.mtg-frontend.rule=Host(`cube.whitney.rip`)
       - traefik.http.routers.mtg-frontend.tls=true
       - traefik.http.routers.mtg-frontend.tls.certresolver=lets-encrypt
