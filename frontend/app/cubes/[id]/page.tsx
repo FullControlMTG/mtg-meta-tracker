@@ -23,23 +23,25 @@ export default async function CubeDetailPage({ params }: { params: { id: string 
   const { cube } = view;
 
   return (
-    <main className="container">
-      <p className="muted" style={{ marginBottom: "0.25rem" }}>
-        <Link href="/cubes">← Cubes</Link>
-      </p>
-      <h1 style={{ marginBottom: "0.25rem" }}>{cube.name}</h1>
-      <p className="muted">
-        {view.card_count} cards · synced {fmtDate(cube.last_synced_at)}
-        {cube.moxfield_public_id && (
-          <>
-            {" · "}
-            <a href={MOXFIELD_URL(cube.moxfield_public_id)} target="_blank" rel="noreferrer">
-              Moxfield ↗
-            </a>
-          </>
-        )}
-      </p>
-      {cube.description && <p>{cube.description}</p>}
+    <main style={{ padding: "1.5rem" }}>
+      <div style={{ maxWidth: 1040, margin: "0 auto" }}>
+        <p className="muted" style={{ marginBottom: "0.25rem" }}>
+          <Link href="/cubes">← Cubes</Link>
+        </p>
+        <h1 style={{ marginBottom: "0.25rem" }}>{cube.name}</h1>
+        <p className="muted">
+          {view.card_count} cards · synced {fmtDate(cube.last_synced_at)}
+          {cube.moxfield_public_id && (
+            <>
+              {" · "}
+              <a href={MOXFIELD_URL(cube.moxfield_public_id)} target="_blank" rel="noreferrer">
+                Moxfield ↗
+              </a>
+            </>
+          )}
+        </p>
+        {cube.description && <p>{cube.description}</p>}
+      </div>
 
       {cards.length === 0 ? (
         <p className="muted" style={{ marginTop: "1rem" }}>

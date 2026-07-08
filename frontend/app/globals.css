@@ -180,7 +180,7 @@ label {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 .fan-card:hover {
-  transform: translateX(16px);
+  transform: translateX(12px);
   position: relative;
   z-index: 999 !important;
 }

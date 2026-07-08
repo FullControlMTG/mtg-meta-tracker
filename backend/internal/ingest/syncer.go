@@ -14,17 +14,19 @@ import (
 
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/decklist"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
+	"github.com/runyanjake/mtg-meta-tracker/backend/internal/images"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/scryfall"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/store"
 )
 
 type Syncer struct {
-	store *store.Store
-	scry  *scryfall.Client
+	store  *store.Store
+	scry   *scryfall.Client
+	images *images.Cache
 }
 
-func NewSyncer(s *store.Store, scry *scryfall.Client) *Syncer {
-	return &Syncer{store: s, scry: scry}
+func NewSyncer(s *store.Store, scry *scryfall.Client, imgs *images.Cache) *Syncer {
+	return &Syncer{store: s, scry: scry, images: imgs}
 }
 
 // SyncCube rebuilds a cube's card pool from its stored card_list (a raw pasted
@@ -78,7 +80,41 @@ func (s *Syncer) SyncCube(ctx context.Context, cubeID uuid.UUID) error {
 		map[string]string{"cube_id": cubeID.String(), "trigger": "cube_synced"},
 		"recompute:"+cubeID.String())
 	log.Printf("sync cube %s: %d active cards", cubeID, len(activeIDs))
+
+	// Best-effort: warm the on-disk image cache for this pool so the cube page
+	// serves self-hosted images immediately instead of downloading on first view.
+	// Already-cached images are skipped; failures are logged, not fatal (the lazy
+	// on-demand fetch still covers any that miss here). Detached from the job so it
+	// doesn't hold the single-threaded worker for the full download — the pool is
+	// already committed and analytics/revalidation can proceed. ctx is the
+	// long-lived worker context (cancelled only on shutdown), so it's safe here.
+	go s.prefetchImages(ctx, cubeID, cards)
 	return nil
+}
+
+// prefetchImages downloads the "normal" image for each resolved card into the
+// shared image cache. The key format mirrors the image endpoint's
+// (<scryfall_id>-<variant>, default variant "normal").
+func (s *Syncer) prefetchImages(ctx context.Context, cubeID uuid.UUID, cards []domain.Card) {
+	if s.images == nil {
+		return
+	}
+	items := make([]images.PrefetchItem, 0, len(cards))
+	for i := range cards {
+		if cards[i].ImageNormal == nil || *cards[i].ImageNormal == "" {
+			continue
+		}
+		items = append(items, images.PrefetchItem{
+			Key: cards[i].ScryfallID.String() + "-normal",
+			URL: *cards[i].ImageNormal,
+		})
+	}
+	if len(items) == 0 {
+		return
+	}
+	failed := s.images.Prefetch(ctx, items)
+	log.Printf("sync cube %s: prefetched %d/%d images (%d failed)",
+		cubeID, len(items)-failed, len(items), failed)
 }
 
 // poolNamesFromList parses a raw pasted decklist into the set of mainboard card

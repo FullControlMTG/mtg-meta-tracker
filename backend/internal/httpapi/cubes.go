@@ -209,6 +209,10 @@ func (s *Server) handlePatchCube(w http.ResponseWriter, r *http.Request) {
 	if listChanged {
 		s.enqueueCubeSync(r, c.ID)
 	}
+	// Bust the public cube listing and this cube's page so edits surface promptly
+	// rather than waiting out the ISR window. (A list change also revalidates
+	// again once its sync's analytics recompute finishes.)
+	s.revalidatePaths([]string{"/", "/cubes", "/cubes/" + c.ID.String()})
 	writeJSON(w, http.StatusOK, s.cubeView(r, c))
 }
 

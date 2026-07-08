@@ -8,11 +8,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -90,6 +92,41 @@ func (c *Cache) Fetch(ctx context.Context, key, sourceURL string) (string, error
 		return "", err
 	}
 	return v.(string), nil
+}
+
+// PrefetchItem is a single image to warm into the cache: a cache key
+// (<scryfall_id>-<variant>) and the Scryfall source URL to download on a miss.
+type PrefetchItem struct {
+	Key string
+	URL string
+}
+
+// Prefetch warms the cache for a set of images, downloading only the ones not
+// already on disk. It fans out one goroutine per item; each calls Fetch, which
+// returns immediately on a hit and otherwise downloads under the shared
+// concurrency semaphore (so this respects the same throttle/retry as on-demand
+// misses — passing hundreds of items will not stampede Scryfall). Failures are
+// logged, not fatal; returns how many items failed to fetch.
+func (c *Cache) Prefetch(ctx context.Context, items []PrefetchItem) (failed int) {
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	for _, it := range items {
+		if it.URL == "" {
+			continue
+		}
+		wg.Add(1)
+		go func(it PrefetchItem) {
+			defer wg.Done()
+			if _, err := c.Fetch(ctx, it.Key, it.URL); err != nil {
+				mu.Lock()
+				failed++
+				mu.Unlock()
+				log.Printf("image prefetch %s: %v", it.Key, err)
+			}
+		}(it)
+	}
+	wg.Wait()
+	return failed
 }
 
 func (c *Cache) pathFor(key string) string {

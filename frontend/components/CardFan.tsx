@@ -1,8 +1,12 @@
-import Image from "next/image";
+"use client";
 
-const CARD_W = 260;
-const CARD_H = 362; // Scryfall "normal" is ~488x680 (ratio 0.717).
-const PEEK = 40; // visible sliver (title line) per stacked card
+import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
+
+const MIN_CARD_W = 200; // minimum readable card width in px → drives column count
+const MAX_COLS = 8; // a cube section holds far more cards than a deck; more columns → shorter
+const CARD_RATIO = 88 / 63; // MTG card aspect ratio (height / width)
+const PEEK_RATIO = 0.14; // fraction of a stacked card's height left visible (its title strip)
 
 // Minimal shape shared by DecklistCard and CubeCard. is_resolved is optional —
 // cube cards are always resolved, so treat a missing flag as resolved.
@@ -13,6 +17,16 @@ type FanCard = {
   is_resolved?: boolean;
 };
 
+type Dims = { cols: number; cardW: number; cardH: number; strip: number };
+
+function computeDims(containerW: number): Dims {
+  const cols = Math.min(MAX_COLS, Math.max(1, Math.floor(containerW / MIN_CARD_W)));
+  const cardW = containerW / cols;
+  const cardH = cardW * CARD_RATIO;
+  const strip = cardH * PEEK_RATIO;
+  return { cols, cardW, cardH, strip };
+}
+
 // Prefer our same-origin image cache (backend downloads from Scryfall on a miss
 // and self-hosts thereafter). Fall back to the raw Scryfall URL if the card has
 // no id (e.g. an unresolved decklist entry).
@@ -21,32 +35,65 @@ function imageSrc(c: FanCard): string | undefined {
   return c.image_normal;
 }
 
-// Vertical overlaid fan: cards stacked with ~90% overlap so only each card's
-// title line peeks; hovering slides one out. Uses Scryfall "normal" images.
+// Full-width, responsive, multi-column overlaid spread. The container is measured
+// and split into as many ~200px columns as fit; cards fill sequentially down each
+// column, stacked with ~86% overlap so only each card's title strip peeks. Hovering
+// a card lifts it above its column siblings (see .fan-card in globals.css).
 export function CardFan({ cards }: { cards: FanCard[] }) {
   const withArt = cards.filter((c) => c.is_resolved !== false && imageSrc(c));
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dims, setDims] = useState<Dims | null>(null);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => setDims(computeDims(el.offsetWidth));
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   if (withArt.length === 0) return null;
 
+  const columns: FanCard[][] = [];
+  if (dims) {
+    const perCol = Math.ceil(withArt.length / dims.cols);
+    for (let c = 0; c < dims.cols; c++) {
+      const slice = withArt.slice(c * perCol, (c + 1) * perCol);
+      if (slice.length > 0) columns.push(slice);
+    }
+  }
+
   return (
-    <div style={{ width: CARD_W, position: "relative" }}>
-      {withArt.map((c, i) => (
-        <div
-          key={c.card_name}
-          style={{ marginTop: i === 0 ? 0 : -(CARD_H - PEEK), position: "relative", zIndex: i }}
-        >
-          <Image
-            className="fan-card"
-            src={imageSrc(c) as string}
-            alt={c.card_name}
-            width={CARD_W}
-            height={CARD_H}
-            // The backend already serves self-hosted, correctly-sized, immutable images,
-            // so the Next optimizer is a redundant fetch/optimize/cache layer (and an extra
-            // failure surface under a cold-cache burst). Go straight to the source.
-            unoptimized
-          />
-        </div>
-      ))}
+    <div ref={containerRef} style={{ display: "flex", alignItems: "flex-start", width: "100%" }}>
+      {dims &&
+        columns.map((col, ci) => (
+          <div key={ci} style={{ width: dims.cardW, flexShrink: 0, position: "relative" }}>
+            {col.map((c, i) => (
+              <div
+                key={c.card_name}
+                style={{
+                  marginTop: i === 0 ? 0 : -(dims.cardH - dims.strip),
+                  position: "relative",
+                  zIndex: i,
+                }}
+              >
+                <Image
+                  className="fan-card"
+                  src={imageSrc(c) as string}
+                  alt={c.card_name}
+                  width={Math.round(dims.cardW)}
+                  height={Math.round(dims.cardH)}
+                  // The backend already serves self-hosted, correctly-sized, immutable images,
+                  // so the Next optimizer is a redundant fetch/optimize/cache layer (and an extra
+                  // failure surface under a cold-cache burst). Go straight to the source.
+                  unoptimized
+                />
+              </div>
+            ))}
+          </div>
+        ))}
     </div>
   );
 }

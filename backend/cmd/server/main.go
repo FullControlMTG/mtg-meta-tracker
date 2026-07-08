@@ -19,6 +19,7 @@ import (
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/decklist"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/httpapi"
+	"github.com/runyanjake/mtg-meta-tracker/backend/internal/images"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/ingest"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/jobs"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/scryfall"
@@ -49,7 +50,8 @@ func main() {
 	}
 
 	scry := scryfall.New(cfg.ScryfallUserAgent, cfg.ScryfallMinInterval)
-	syncer := ingest.NewSyncer(st, scry)
+	imgCache := images.New(cfg.ImageCacheDir, cfg.ScryfallUserAgent)
+	syncer := ingest.NewSyncer(st, scry, imgCache)
 	resolver := decklist.NewResolver(st, scry)
 	engine := analytics.NewEngine(st, cfg)
 
@@ -94,7 +96,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.New(st, cfg, resolver).Router(),
+		Handler:           httpapi.New(st, cfg, resolver, imgCache).Router(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {

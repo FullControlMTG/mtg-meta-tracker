@@ -24,12 +24,12 @@ type Server struct {
 	images   *images.Cache
 }
 
-func New(s *store.Store, cfg config.Config, resolver *decklist.Resolver) *Server {
+func New(s *store.Store, cfg config.Config, resolver *decklist.Resolver, imgs *images.Cache) *Server {
 	return &Server{
 		store:    s,
 		cfg:      cfg,
 		resolver: resolver,
-		images:   images.New(cfg.ImageCacheDir, cfg.ScryfallUserAgent),
+		images:   imgs,
 	}
 }
 

@@ -28,7 +28,9 @@ export default function AdminCubesPage() {
   const [description, setDescription] = useState("");
   const [cardList, setCardList] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
 
   function refresh() {
     apiGet<CubeView[]>("/cubes")
@@ -83,10 +85,22 @@ export default function AdminCubesPage() {
   }
 
   async function sync(id: string) {
+    setSyncingId(id);
+    setErr(null);
+    setNotice(null);
     try {
+      // The rebuild runs as a background job (this returns 202 before it finishes),
+      // so it also re-checks the image cache and downloads any missing card art.
       await apiPost(`/admin/cubes/${id}/sync`);
+      setNotice("Rebuild started — resolving cards and downloading images in the background.");
+      refresh();
+      // The job lands a few seconds later; refresh again so the updated card count
+      // and synced time surface without a manual reload.
+      setTimeout(refresh, 4000);
     } catch (e) {
       setErr(String(e instanceof Error ? e.message : e));
+    } finally {
+      setSyncingId(null);
     }
   }
 
@@ -175,6 +189,7 @@ export default function AdminCubesPage() {
       </form>
 
       <h2>Cubes</h2>
+      {notice && <p style={{ color: "var(--good, #0a0)", marginTop: 0 }}>{notice}</p>}
       {cubes.length === 0 && <p className="muted">No cubes yet.</p>}
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
         {cubes.map((cv) => (
@@ -206,9 +221,10 @@ export default function AdminCubesPage() {
                   type="button"
                   className="button"
                   onClick={() => sync(cv.cube.id)}
+                  disabled={syncingId === cv.cube.id}
                   style={{ background: "var(--surface)", color: "var(--text)", border: "1px solid var(--border)" }}
                 >
-                  Rebuild pool
+                  {syncingId === cv.cube.id ? "Rebuilding…" : "Rebuild pool"}
                 </button>
               )}
               <button
