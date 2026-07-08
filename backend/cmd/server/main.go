@@ -13,8 +13,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/runyanjake/mtg-meta-tracker/backend/internal/analytics"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/auth"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/config"
+	"github.com/runyanjake/mtg-meta-tracker/backend/internal/decklist"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/httpapi"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/ingest"
@@ -50,6 +52,8 @@ func main() {
 	scry := scryfall.New(cfg.ScryfallUserAgent, cfg.ScryfallMinInterval)
 	mox := moxfield.New(cfg.ScryfallUserAgent)
 	syncer := ingest.NewSyncer(st, scry, mox)
+	resolver := decklist.NewResolver(st, scry)
+	engine := analytics.NewEngine(st, cfg)
 
 	workerCtx, cancelWorker := context.WithCancel(rootCtx)
 	defer cancelWorker()
@@ -67,11 +71,29 @@ func main() {
 		}
 		return syncer.SyncCube(ctx, id)
 	})
+	worker.Register("recompute_analytics", func(ctx context.Context, payload json.RawMessage) error {
+		var p struct {
+			CubeID  string `json:"cube_id"`
+			Trigger string `json:"trigger"`
+		}
+		if err := json.Unmarshal(payload, &p); err != nil {
+			return err
+		}
+		id, err := uuid.Parse(p.CubeID)
+		if err != nil {
+			return err
+		}
+		trigger := p.Trigger
+		if trigger == "" {
+			trigger = "manual"
+		}
+		return engine.Recompute(ctx, id, trigger)
+	})
 	go worker.Run(workerCtx)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.New(st, cfg).Router(),
+		Handler:           httpapi.New(st, cfg, resolver).Router(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {

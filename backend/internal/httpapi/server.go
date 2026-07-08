@@ -10,16 +10,18 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/config"
+	"github.com/runyanjake/mtg-meta-tracker/backend/internal/decklist"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/store"
 )
 
 type Server struct {
-	store *store.Store
-	cfg   config.Config
+	store    *store.Store
+	cfg      config.Config
+	resolver *decklist.Resolver
 }
 
-func New(s *store.Store, cfg config.Config) *Server {
-	return &Server{store: s, cfg: cfg}
+func New(s *store.Store, cfg config.Config, resolver *decklist.Resolver) *Server {
+	return &Server{store: s, cfg: cfg, resolver: resolver}
 }
 
 func (s *Server) Router() http.Handler {
@@ -43,6 +45,19 @@ func (s *Server) Router() http.Handler {
 		r.Get("/cubes", s.handleListCubes)
 		r.Get("/cubes/{id}", s.handleGetCube)
 
+		r.Get("/decklists", s.handleListDecklists)
+		r.Get("/decklists/{id}", s.handleGetDecklist)
+		r.With(s.requireAuth).Post("/decklists", s.handleCreateDecklist)
+		r.With(s.requireAuth).Patch("/decklists/{id}", s.handlePatchDecklist)
+		r.With(s.requireAuth).Patch("/decklists/{id}/record", s.handlePatchDecklistRecord)
+		r.With(s.requireAuth).Delete("/decklists/{id}", s.handleDeleteDecklist)
+		r.With(s.requireAuth).Post("/decklists/infer-colors", s.handleInferColors)
+
+		r.Get("/analytics/overview", s.handleAnalyticsOverview)
+		r.Get("/analytics/colors", s.handleAnalyticsColors)
+		r.Get("/analytics/cards", s.handleAnalyticsCards)
+		r.Get("/analytics/pairs", s.handleAnalyticsPairs)
+
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireAdmin)
 			r.Post("/admin/invites", s.handleCreateInvite)
@@ -53,6 +68,8 @@ func (s *Server) Router() http.Handler {
 			r.Patch("/admin/cubes/{id}", s.handlePatchCube)
 			r.Delete("/admin/cubes/{id}", s.handleDeleteCube)
 			r.Post("/admin/cubes/{id}/sync", s.handleSyncCube)
+
+			r.Post("/admin/analytics/recompute", s.handleRecomputeAnalytics)
 		})
 	})
 	return r

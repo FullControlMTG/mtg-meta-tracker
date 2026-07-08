@@ -24,21 +24,21 @@ Phased build. Each phase is independently runnable/verifiable.
 - [ ] Scheduled periodic re-sync
 
 ### Phase 3 — Decklists
-- [ ] Decklist CRUD, list parsing → `decklist_cards`
-- [ ] Color-identity inference (`/api/decklists/infer-colors`) + strategy interface
-- [ ] Record update endpoint → enqueue recompute
+- [x] Decklist CRUD, list parsing → `decklist_cards`
+- [x] Color-identity inference (`/api/decklists/infer-colors`) + resolver strategy (cube pool + Scryfall fallback)
+- [x] Record update endpoint → enqueue recompute
 
 ### Phase 4 — Analytics engine + jobs
-- [ ] Jobs worker (poll + dedup/coalesce)
-- [ ] Recompute engine → color/card/pair/meta/metric snapshots (incl. shrinkage + Wilson)
-- [ ] Read endpoints for analytics
-- [ ] Next.js `/api/revalidate` webhook + on-demand revalidation
+- [x] Jobs worker (poll + dedup/coalesce)  *(worker existed; `recompute_analytics` handler added)*
+- [x] Recompute engine → color/card/pair/meta/metric snapshots (incl. shrinkage + Wilson)
+- [x] Read endpoints for analytics
+- [x] Next.js `/api/revalidate` webhook + on-demand revalidation
 
 ### Phase 5 — Frontend
-- [ ] Analytics dashboard (charts via `dataviz`)
-- [ ] Decklist detail (overlaid card fan) with ISR
-- [ ] User pages, deck creation page with live inference
-- [ ] Auth pages
+- [x] Analytics dashboard (charts via `dataviz`)
+- [x] Decklist detail (overlaid card fan) with ISR
+- [x] User pages, deck creation page with live inference
+- [x] Auth pages (login; invite-accept page still deferred)
 
 ### Phase 6 — Polish
 - [ ] Scheduled cube sync + card refresh jobs

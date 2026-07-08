@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -25,6 +26,37 @@ func (s *Store) UpsertCard(ctx context.Context, c *domain.Card) error {
 		c.Colors, c.ColorIdentity, c.Rarity, c.Layout, c.ImageSmall, c.ImageNormal,
 		c.ImageArtCrop, c.SetCode, c.CollectorNumber, []byte(c.Raw))
 	return err
+}
+
+// LookupCubeCardsByName resolves card names against a cube's active pool,
+// case-insensitively. The returned map is keyed by lower(name).
+func (s *Store) LookupCubeCardsByName(ctx context.Context, cubeID uuid.UUID, names []string) (map[string]domain.Card, error) {
+	out := make(map[string]domain.Card)
+	if len(names) == 0 {
+		return out, nil
+	}
+	lowered := make([]string, len(names))
+	for i, n := range names {
+		lowered[i] = strings.ToLower(n)
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT c.scryfall_id, c.name, c.cmc, c.color_identity
+		FROM cards c
+		JOIN cube_cards cc ON cc.card_id = c.scryfall_id
+		WHERE cc.cube_id = $1 AND cc.is_active AND lower(c.name) = ANY($2::text[])`,
+		cubeID, lowered)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var c domain.Card
+		if err := rows.Scan(&c.ScryfallID, &c.Name, &c.CMC, &c.ColorIdentity); err != nil {
+			return nil, err
+		}
+		out[strings.ToLower(c.Name)] = c
+	}
+	return out, rows.Err()
 }
 
 // Absent cards are soft-removed (not deleted) so old decklists still resolve.

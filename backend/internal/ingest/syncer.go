@@ -59,6 +59,10 @@ func (s *Syncer) SyncCube(ctx context.Context, cubeID uuid.UUID) error {
 	if err := s.store.SetCubeSynced(ctx, cubeID, time.Now()); err != nil {
 		return err
 	}
+	// Pool changed → refresh analytics for this cube.
+	_ = s.store.EnqueueJob(ctx, "recompute_analytics",
+		map[string]string{"cube_id": cubeID.String(), "trigger": "cube_synced"},
+		"recompute:"+cubeID.String())
 	log.Printf("sync cube %s: %d active cards", cubeID, len(activeIDs))
 	return nil
 }

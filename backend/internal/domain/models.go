@@ -12,6 +12,20 @@ const (
 	RoleAdmin = "admin"
 )
 
+// Decklist board sections.
+const (
+	BoardMain  = "main"
+	BoardSide  = "side"
+	BoardMaybe = "maybe"
+)
+
+// Decklist lifecycle status.
+const (
+	StatusDraft    = "draft"
+	StatusActive   = "active"
+	StatusArchived = "archived"
+)
+
 type User struct {
 	ID           uuid.UUID `json:"id"`
 	Username     string    `json:"username"`
@@ -83,6 +97,43 @@ type Card struct {
 	SetCode         *string         `json:"set_code,omitempty"`
 	CollectorNumber *string         `json:"collector_number,omitempty"`
 	Raw             json.RawMessage `json:"-"`
+}
+
+type Decklist struct {
+	ID            uuid.UUID `json:"id"`
+	CubeID        uuid.UUID `json:"cube_id"`
+	UserID        uuid.UUID `json:"user_id"`
+	Name          string    `json:"name"`
+	Description   *string   `json:"description,omitempty"`
+	ColorIdentity int       `json:"color_identity"`
+	Archetype     *string   `json:"archetype,omitempty"`
+	SourceURL     *string   `json:"source_url,omitempty"`
+	DecklistRaw   string    `json:"decklist_raw"`
+	CardCount     int       `json:"card_count"`
+	Status        string    `json:"status"`
+
+	// Record (nullable / added after the fact).
+	GamesPlayed     int        `json:"games_played"`
+	Wins            int        `json:"wins"`
+	Losses          int        `json:"losses"`
+	Draws           int        `json:"draws"`
+	Placement       *int       `json:"placement,omitempty"`
+	EventName       *string    `json:"event_name,omitempty"`
+	PlayedAt        *time.Time `json:"played_at,omitempty"`
+	RecordUpdatedAt *time.Time `json:"record_updated_at,omitempty"`
+	Winrate         *float64   `json:"winrate,omitempty"` // generated column
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type DecklistCard struct {
+	DecklistID uuid.UUID  `json:"decklist_id"`
+	CardID     *uuid.UUID `json:"card_id,omitempty"`
+	CardName   string     `json:"card_name"`
+	Quantity   int        `json:"quantity"`
+	IsResolved bool       `json:"is_resolved"`
+	Board      string     `json:"board"`
 }
 
 type Job struct {
