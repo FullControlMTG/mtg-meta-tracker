@@ -59,6 +59,44 @@ func (s *Store) LookupCubeCardsByName(ctx context.Context, cubeID uuid.UUID, nam
 	return out, rows.Err()
 }
 
+// CubeCardView enriches a cube's active card with cached Scryfall fields for display.
+type CubeCardView struct {
+	ScryfallID    uuid.UUID `json:"card_id"`
+	Name          string    `json:"card_name"`
+	ManaCost      *string   `json:"mana_cost,omitempty"`
+	CMC           *float64  `json:"cmc,omitempty"`
+	TypeLine      *string   `json:"type_line,omitempty"`
+	ColorIdentity int       `json:"color_identity"`
+	ImageNormal   *string   `json:"image_normal,omitempty"`
+	ImageArtCrop  *string   `json:"image_art_crop,omitempty"`
+}
+
+// ListCubeCards returns a cube's active cards with the Scryfall fields the
+// public cube page renders. Ordered so callers can group by color identity.
+func (s *Store) ListCubeCards(ctx context.Context, cubeID uuid.UUID) ([]CubeCardView, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT c.scryfall_id, c.name, c.mana_cost, c.cmc, c.type_line,
+			c.color_identity, c.image_normal, c.image_art_crop
+		FROM cards c
+		JOIN cube_cards cc ON cc.card_id = c.scryfall_id
+		WHERE cc.cube_id = $1 AND cc.is_active
+		ORDER BY c.color_identity, lower(c.name)`, cubeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []CubeCardView
+	for rows.Next() {
+		var v CubeCardView
+		if err := rows.Scan(&v.ScryfallID, &v.Name, &v.ManaCost, &v.CMC, &v.TypeLine,
+			&v.ColorIdentity, &v.ImageNormal, &v.ImageArtCrop); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
 // Absent cards are soft-removed (not deleted) so old decklists still resolve.
 func (s *Store) SyncCubeCards(ctx context.Context, cubeID uuid.UUID, activeIDs []uuid.UUID) error {
 	tx, err := s.pool.Begin(ctx)

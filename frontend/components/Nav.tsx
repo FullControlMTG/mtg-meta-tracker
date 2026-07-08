@@ -7,8 +7,8 @@ import { apiGetOptional, apiPost, type PublicUser } from "@/lib/api";
 const links = [
   { href: "/", label: "Overview" },
   { href: "/analytics", label: "Analytics" },
+  { href: "/cubes", label: "Cubes" },
   { href: "/decklists", label: "Decklists" },
-  { href: "/decks/new", label: "New deck" },
 ];
 
 export function Nav() {
@@ -55,7 +55,16 @@ export function Nav() {
             </Link>
           ))}
           {me?.role === "admin" && (
-            <Link href="/admin/cubes" style={{ color: "var(--text-secondary)" }}>
+            <Link
+              href="/admin/cubes"
+              style={{
+                color: "var(--accent)",
+                padding: "2px 8px",
+                borderRadius: 999,
+                border: "1px solid var(--border)",
+                fontSize: "0.9rem",
+              }}
+            >
               Admin
             </Link>
           )}

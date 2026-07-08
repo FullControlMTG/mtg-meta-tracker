@@ -9,6 +9,7 @@ import (
 
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/moxfield"
+	"github.com/runyanjake/mtg-meta-tracker/backend/internal/store"
 )
 
 func (s *Server) cubeView(r *http.Request, c *domain.Cube) map[string]any {
@@ -46,6 +47,27 @@ func (s *Server) handleGetCube(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.cubeView(r, c))
+}
+
+func (s *Server) handleGetCubeCards(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if _, err := s.store.GetCube(r.Context(), id); err != nil {
+		writeErr(w, statusForStoreErr(err), "cube not found")
+		return
+	}
+	cards, err := s.store.ListCubeCards(r.Context(), id)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "could not list cube cards")
+		return
+	}
+	if cards == nil {
+		cards = []store.CubeCardView{}
+	}
+	writeJSON(w, http.StatusOK, cards)
 }
 
 func (s *Server) handleCreateCube(w http.ResponseWriter, r *http.Request) {

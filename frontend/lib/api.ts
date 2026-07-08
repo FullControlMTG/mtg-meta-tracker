@@ -64,6 +64,16 @@ export interface CubeView {
   cube: Cube;
   card_count: number;
 }
+export interface CubeCard {
+  card_id: string;
+  card_name: string;
+  mana_cost?: string;
+  cmc?: number;
+  type_line?: string;
+  color_identity: number;
+  image_normal?: string;
+  image_art_crop?: string;
+}
 
 export interface Decklist {
   id: string;
