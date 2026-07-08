@@ -21,7 +21,6 @@ import (
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/httpapi"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/ingest"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/jobs"
-	"github.com/runyanjake/mtg-meta-tracker/backend/internal/moxfield"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/scryfall"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/store"
 )
@@ -50,8 +49,7 @@ func main() {
 	}
 
 	scry := scryfall.New(cfg.ScryfallUserAgent, cfg.ScryfallMinInterval)
-	mox := moxfield.New(cfg.MoxfieldUserAgent)
-	syncer := ingest.NewSyncer(st, scry, mox)
+	syncer := ingest.NewSyncer(st, scry)
 	resolver := decklist.NewResolver(st, scry)
 	engine := analytics.NewEngine(st, cfg)
 

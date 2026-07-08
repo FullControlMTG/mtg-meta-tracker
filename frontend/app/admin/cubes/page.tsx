@@ -26,6 +26,7 @@ export default function AdminCubesPage() {
   const [name, setName] = useState("");
   const [moxfieldUrl, setMoxfieldUrl] = useState("");
   const [description, setDescription] = useState("");
+  const [cardList, setCardList] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -44,6 +45,7 @@ export default function AdminCubesPage() {
     setName("");
     setMoxfieldUrl("");
     setDescription("");
+    setCardList("");
     setErr(null);
   }
 
@@ -52,6 +54,7 @@ export default function AdminCubesPage() {
     setName(cv.cube.name);
     setMoxfieldUrl(cv.cube.moxfield_public_id ?? "");
     setDescription(cv.cube.description ?? "");
+    setCardList(cv.cube.card_list ?? "");
     setErr(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -61,7 +64,7 @@ export default function AdminCubesPage() {
     setBusy(true);
     setErr(null);
     try {
-      const body = { name, moxfield_url: moxfieldUrl, description };
+      const body = { name, moxfield_url: moxfieldUrl, description, card_list: cardList };
       if (editingId) {
         await apiPatch<CubeView>(`/admin/cubes/${editingId}`, body);
       } else {
@@ -121,7 +124,7 @@ export default function AdminCubesPage() {
         <label htmlFor="name">Name</label>
         <input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
 
-        <label htmlFor="mox">Moxfield URL</label>
+        <label htmlFor="mox">Moxfield URL (optional, for reference)</label>
         <input
           id="mox"
           value={moxfieldUrl}
@@ -137,6 +140,20 @@ export default function AdminCubesPage() {
           rows={3}
           style={{ resize: "vertical" }}
         />
+
+        <label htmlFor="cards">Card list</label>
+        <textarea
+          id="cards"
+          value={cardList}
+          onChange={(e) => setCardList(e.target.value)}
+          rows={12}
+          placeholder={"One card per line, standard decklist format:\n1 Sol Ring\n1 Lightning Bolt\nMana Crypt"}
+          style={{ resize: "vertical", fontFamily: "monospace" }}
+        />
+        <p className="muted" style={{ margin: "0.25rem 0 0", fontSize: "0.8rem" }}>
+          The pool is built from this list. Saving re-resolves cards against Scryfall and
+          recomputes analytics.
+        </p>
 
         {err && <p style={{ color: "var(--bad)", marginTop: "0.75rem" }}>{err}</p>}
 
@@ -169,7 +186,14 @@ export default function AdminCubesPage() {
             </div>
             {cv.cube.moxfield_public_id && (
               <p className="muted" style={{ margin: "0.25rem 0", fontSize: "0.85rem" }}>
-                Moxfield: {cv.cube.moxfield_public_id}
+                Moxfield:{" "}
+                <a
+                  href={`https://www.moxfield.com/decks/${cv.cube.moxfield_public_id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {cv.cube.moxfield_public_id}
+                </a>
               </p>
             )}
             {cv.cube.description && <p style={{ margin: "0.25rem 0" }}>{cv.cube.description}</p>}
@@ -177,14 +201,14 @@ export default function AdminCubesPage() {
               <button type="button" className="button" onClick={() => startEdit(cv)}>
                 Edit
               </button>
-              {cv.cube.moxfield_public_id && (
+              {cv.cube.card_list && (
                 <button
                   type="button"
                   className="button"
                   onClick={() => sync(cv.cube.id)}
                   style={{ background: "var(--surface)", color: "var(--text)", border: "1px solid var(--border)" }}
                 >
-                  Sync now
+                  Rebuild pool
                 </button>
               )}
               <button

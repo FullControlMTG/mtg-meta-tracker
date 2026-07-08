@@ -22,6 +22,14 @@ func (s *Server) enqueueCubeSync(r *http.Request, id uuid.UUID) {
 		map[string]string{"cube_id": id.String()}, "sync_cube:"+id.String())
 }
 
+// eqStrPtr reports whether two optional strings are equal, treating nil as absent.
+func eqStrPtr(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
 func (s *Server) handleListCubes(w http.ResponseWriter, r *http.Request) {
 	cubes, err := s.store.ListCubes(r.Context())
 	if err != nil {
@@ -111,6 +119,7 @@ func (s *Server) handleCreateCube(w http.ResponseWriter, r *http.Request) {
 		Name        string `json:"name"`
 		MoxfieldURL string `json:"moxfield_url"`
 		Description string `json:"description"`
+		CardList    string `json:"card_list"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid body")
@@ -128,11 +137,15 @@ func (s *Server) handleCreateCube(w http.ResponseWriter, r *http.Request) {
 	if req.Description != "" {
 		c.Description = &req.Description
 	}
+	if list := strings.TrimSpace(req.CardList); list != "" {
+		c.CardList = &list
+	}
 	if err := s.store.CreateCube(r.Context(), c); err != nil {
 		writeErr(w, http.StatusInternalServerError, "could not create cube")
 		return
 	}
-	if c.MoxfieldPublicID != nil {
+	// Build the pool from the pasted list, if any.
+	if c.CardList != nil {
 		s.enqueueCubeSync(r, c.ID)
 	}
 	// Bust the public cube listing so the new cube surfaces promptly rather than
@@ -157,32 +170,43 @@ func (s *Server) handlePatchCube(w http.ResponseWriter, r *http.Request) {
 		Name        *string `json:"name"`
 		MoxfieldURL *string `json:"moxfield_url"`
 		Description *string `json:"description"`
+		CardList    *string `json:"card_list"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	sourceChanged := false
+	listChanged := false
 	if req.Name != nil {
 		c.Name = *req.Name
 	}
 	if req.MoxfieldURL != nil {
-		pid := moxfield.ParsePublicID(strings.TrimSpace(*req.MoxfieldURL))
-		if pid == "" {
+		// Moxfield URL is display-only metadata; changing it does not rebuild the pool.
+		if pid := moxfield.ParsePublicID(strings.TrimSpace(*req.MoxfieldURL)); pid == "" {
 			c.MoxfieldPublicID = nil
-		} else if c.MoxfieldPublicID == nil || *c.MoxfieldPublicID != pid {
+		} else {
 			c.MoxfieldPublicID = &pid
-			sourceChanged = true
 		}
 	}
 	if req.Description != nil {
 		c.Description = req.Description
 	}
+	if req.CardList != nil {
+		list := strings.TrimSpace(*req.CardList)
+		var next *string
+		if list != "" {
+			next = &list
+		}
+		if !eqStrPtr(c.CardList, next) {
+			c.CardList = next
+			listChanged = true
+		}
+	}
 	if err := s.store.UpdateCube(r.Context(), c); err != nil {
 		writeErr(w, statusForStoreErr(err), "could not update cube")
 		return
 	}
-	if sourceChanged {
+	if listChanged {
 		s.enqueueCubeSync(r, c.ID)
 	}
 	writeJSON(w, http.StatusOK, s.cubeView(r, c))
@@ -198,6 +222,8 @@ func (s *Server) handleSyncCube(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, statusForStoreErr(err), "cube not found")
 		return
 	}
+	// Force a full re-resolve even when the list is unchanged.
+	_ = s.store.ClearCubeContentHash(r.Context(), id)
 	s.enqueueCubeSync(r, id)
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "sync enqueued"})
 }

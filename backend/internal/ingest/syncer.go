@@ -12,7 +12,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/runyanjake/mtg-meta-tracker/backend/internal/moxfield"
+	"github.com/runyanjake/mtg-meta-tracker/backend/internal/decklist"
+	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/scryfall"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/store"
 )
@@ -20,30 +21,27 @@ import (
 type Syncer struct {
 	store *store.Store
 	scry  *scryfall.Client
-	mox   *moxfield.Client
 }
 
-func NewSyncer(s *store.Store, scry *scryfall.Client, mox *moxfield.Client) *Syncer {
-	return &Syncer{store: s, scry: scry, mox: mox}
+func NewSyncer(s *store.Store, scry *scryfall.Client) *Syncer {
+	return &Syncer{store: s, scry: scry}
 }
 
+// SyncCube rebuilds a cube's card pool from its stored card_list (a raw pasted
+// decklist in standard format). The Moxfield URL, if any, is retained only as
+// display metadata — it is no longer fetched (Moxfield's API blocks us).
 func (s *Syncer) SyncCube(ctx context.Context, cubeID uuid.UUID) error {
 	cube, err := s.store.GetCube(ctx, cubeID)
 	if err != nil {
 		return err
 	}
-	if cube.MoxfieldPublicID == nil || *cube.MoxfieldPublicID == "" {
-		return fmt.Errorf("cube %s has no moxfield source", cubeID)
-	}
 
-	names, err := s.mox.FetchCubeCardNames(ctx, *cube.MoxfieldPublicID)
-	if err != nil {
-		return fmt.Errorf("moxfield: %w", err)
-	}
+	// Parse the pasted list into the set of unique mainboard card names.
+	names := poolNamesFromList(cube.CardList)
 
-	// Change detection: fingerprint the returned name-set. If it matches the
-	// last synced list, skip the expensive Scryfall resolve / pool rewrite /
-	// analytics recompute and just record that we checked.
+	// Change detection: fingerprint the name-set. If it matches the last built
+	// list, skip the expensive Scryfall resolve / pool rewrite / analytics
+	// recompute and just record that we checked.
 	hash := hashNames(names)
 	if cube.ContentHash != nil && *cube.ContentHash == hash {
 		if err := s.store.SetCubeSyncState(ctx, cubeID, hash, time.Now()); err != nil {
@@ -83,8 +81,25 @@ func (s *Syncer) SyncCube(ctx context.Context, cubeID uuid.UUID) error {
 	return nil
 }
 
+// poolNamesFromList parses a raw pasted decklist into the set of mainboard card
+// names that make up the cube pool. Quantities are ignored (a cube is a set of
+// distinct cards); side/maybe boards are excluded. Returns nil for an empty or
+// nil list, which clears the pool.
+func poolNamesFromList(cardList *string) []string {
+	if cardList == nil {
+		return nil
+	}
+	var names []string
+	for _, p := range decklist.ParseList(*cardList) {
+		if p.Board == domain.BoardMain {
+			names = append(names, p.Name)
+		}
+	}
+	return names
+}
+
 // hashNames produces an order-independent, case-insensitive fingerprint of a
-// card-name set, used to detect whether the Moxfield list has changed.
+// card-name set, used to detect whether the cube list has changed.
 func hashNames(names []string) string {
 	norm := make([]string, len(names))
 	for i, n := range names {

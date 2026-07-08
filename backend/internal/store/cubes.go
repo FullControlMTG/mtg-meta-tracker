@@ -10,11 +10,11 @@ import (
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
 )
 
-const cubeCols = `id, name, moxfield_public_id, description, content_hash, last_synced_at, created_at`
+const cubeCols = `id, name, moxfield_public_id, description, card_list, content_hash, last_synced_at, created_at`
 
 func scanCube(row pgx.Row) (*domain.Cube, error) {
 	var c domain.Cube
-	err := row.Scan(&c.ID, &c.Name, &c.MoxfieldPublicID, &c.Description, &c.ContentHash, &c.LastSyncedAt, &c.CreatedAt)
+	err := row.Scan(&c.ID, &c.Name, &c.MoxfieldPublicID, &c.Description, &c.CardList, &c.ContentHash, &c.LastSyncedAt, &c.CreatedAt)
 	if err != nil {
 		return nil, normErr(err)
 	}
@@ -23,9 +23,9 @@ func scanCube(row pgx.Row) (*domain.Cube, error) {
 
 func (s *Store) CreateCube(ctx context.Context, c *domain.Cube) error {
 	return s.pool.QueryRow(ctx, `
-		INSERT INTO cubes (name, moxfield_public_id, description)
-		VALUES ($1,$2,$3) RETURNING id, created_at`,
-		c.Name, c.MoxfieldPublicID, c.Description,
+		INSERT INTO cubes (name, moxfield_public_id, description, card_list)
+		VALUES ($1,$2,$3,$4) RETURNING id, created_at`,
+		c.Name, c.MoxfieldPublicID, c.Description, c.CardList,
 	).Scan(&c.ID, &c.CreatedAt)
 }
 
@@ -52,8 +52,8 @@ func (s *Store) ListCubes(ctx context.Context) ([]domain.Cube, error) {
 
 func (s *Store) UpdateCube(ctx context.Context, c *domain.Cube) error {
 	ct, err := s.pool.Exec(ctx, `
-		UPDATE cubes SET name=$2, moxfield_public_id=$3, description=$4 WHERE id=$1`,
-		c.ID, c.Name, c.MoxfieldPublicID, c.Description)
+		UPDATE cubes SET name=$2, moxfield_public_id=$3, description=$4, card_list=$5 WHERE id=$1`,
+		c.ID, c.Name, c.MoxfieldPublicID, c.Description, c.CardList)
 	if err != nil {
 		return err
 	}
@@ -80,6 +80,14 @@ func (s *Store) DeleteCube(ctx context.Context, id uuid.UUID) error {
 func (s *Store) SetCubeSyncState(ctx context.Context, id uuid.UUID, hash string, t time.Time) error {
 	_, err := s.pool.Exec(ctx,
 		`UPDATE cubes SET content_hash=$2, last_synced_at=$3 WHERE id=$1`, id, hash, t)
+	return err
+}
+
+// ClearCubeContentHash nulls the change-detection fingerprint so the next
+// SyncCube re-resolves the pool even if the card list is unchanged. Used by the
+// admin "Rebuild pool" action to retry names that previously failed to resolve.
+func (s *Store) ClearCubeContentHash(ctx context.Context, id uuid.UUID) error {
+	_, err := s.pool.Exec(ctx, `UPDATE cubes SET content_hash=NULL WHERE id=$1`, id)
 	return err
 }
 

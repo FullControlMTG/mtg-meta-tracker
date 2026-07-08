@@ -58,6 +58,7 @@ export interface Cube {
   name: string;
   moxfield_public_id?: string;
   description?: string;
+  card_list?: string;
   last_synced_at?: string;
 }
 export interface CubeView {

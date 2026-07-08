@@ -8,10 +8,11 @@ import (
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/store"
 )
 
-// Scheduler periodically enqueues sync_cube jobs for every Moxfield-backed cube.
-// The sync_cube handler (via ingest.Syncer) does content-hash change detection,
-// so an unchanged list is cheap; the "sync_cube:<id>" dedup key means a still
-// pending sync is never duplicated.
+// Scheduler periodically enqueues sync_cube jobs for every cube that has a
+// stored card_list. The sync_cube handler (via ingest.Syncer) does content-hash
+// change detection, so an unchanged list is cheap (no Scryfall calls); this tick
+// mainly self-heals cubes whose last resolve failed. The "sync_cube:<id>" dedup
+// key means a still-pending sync is never duplicated.
 type Scheduler struct {
 	store    *store.Store
 	interval time.Duration
@@ -55,7 +56,7 @@ func (sc *Scheduler) tick(ctx context.Context) {
 	n := 0
 	for i := range cubes {
 		c := &cubes[i]
-		if c.MoxfieldPublicID == nil || *c.MoxfieldPublicID == "" {
+		if c.CardList == nil || *c.CardList == "" {
 			continue
 		}
 		if err := sc.store.EnqueueJob(ctx, "sync_cube",

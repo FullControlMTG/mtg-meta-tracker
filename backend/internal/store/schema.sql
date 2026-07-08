@@ -68,9 +68,10 @@ CREATE INDEX IF NOT EXISTS idx_invites_open ON invites(lower(email)) WHERE accep
 CREATE TABLE IF NOT EXISTS cubes (
     id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name             text NOT NULL,
-    moxfield_public_id text UNIQUE,
+    moxfield_public_id text UNIQUE,   -- kept as display-only metadata (link back to the source deck)
     description      text,
-    content_hash     text,           -- fingerprint of last-synced Moxfield list; skip re-sync when unchanged
+    card_list        text,            -- raw pasted decklist (standard format); source of truth for the pool
+    content_hash     text,            -- fingerprint of last-built card_list; skip re-resolve when unchanged
     last_synced_at   timestamptz,
     created_at       timestamptz NOT NULL DEFAULT now()
 );
@@ -263,3 +264,4 @@ CREATE INDEX IF NOT EXISTS idx_jobs_pending ON jobs(scheduled_at) WHERE status =
 -- Idempotent migrations for existing databases
 -- ---------------------------------------------------------------------------
 ALTER TABLE cubes ADD COLUMN IF NOT EXISTS content_hash text;
+ALTER TABLE cubes ADD COLUMN IF NOT EXISTS card_list text;

@@ -41,6 +41,14 @@ type deckResponse struct {
 	} `json:"boards"`
 }
 
+// FetchCubeCardNames pulls a deck's mainboard card names from Moxfield's API.
+//
+// NOTE: this is currently unused. Moxfield's API sits behind Cloudflare and
+// returns 403 for unapproved clients, so cube pools are populated from an
+// admin-pasted decklist instead (see ingest.Syncer). This client is retained,
+// with a configurable User-Agent, so it can be re-enabled if Moxfield grants
+// approved API access. ParsePublicID is still used to keep the source URL as
+// display metadata.
 func (c *Client) FetchCubeCardNames(ctx context.Context, publicID string) ([]string, error) {
 	url := fmt.Sprintf("https://api2.moxfield.com/v3/decks/all/%s", publicID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
