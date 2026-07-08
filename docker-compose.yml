@@ -56,7 +56,7 @@ services:
       - traefik
     labels:
       - traefik.enable=true
-      - traefik.http.routers.mtg-frontend.rule=Host(`cube.whitney.rip`)
+      - traefik.http.routers.mtg-frontend.rule=Host(`cube.fullcontrolmtg.com`)
       - traefik.http.routers.mtg-frontend.tls=true
       - traefik.http.routers.mtg-frontend.tls.certresolver=lets-encrypt
       - traefik.http.services.mtg-frontend.loadbalancer.server.port=3000
