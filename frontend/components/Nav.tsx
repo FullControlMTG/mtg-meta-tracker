@@ -1,4 +1,8 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { apiGetOptional, apiPost, type PublicUser } from "@/lib/api";
 
 const links = [
   { href: "/", label: "Overview" },
@@ -8,6 +12,22 @@ const links = [
 ];
 
 export function Nav() {
+  // undefined = still loading, null = logged out, object = logged in
+  const [me, setMe] = useState<PublicUser | null | undefined>(undefined);
+
+  useEffect(() => {
+    apiGetOptional<PublicUser>("/auth/me").then(setMe);
+  }, []);
+
+  async function signOut() {
+    try {
+      await apiPost("/auth/logout");
+    } catch {
+      // ignore — clear the client view regardless
+    }
+    window.location.assign("/");
+  }
+
   return (
     <nav
       style={{
@@ -34,10 +54,38 @@ export function Nav() {
               {l.label}
             </Link>
           ))}
+          {me?.role === "admin" && (
+            <Link href="/admin/cubes" style={{ color: "var(--text-secondary)" }}>
+              Admin
+            </Link>
+          )}
         </div>
-        <Link href="/login" style={{ color: "var(--text-secondary)" }}>
-          Sign in
-        </Link>
+        {me === undefined ? (
+          <span style={{ color: "var(--text-secondary)", opacity: 0.5 }}>…</span>
+        ) : me === null ? (
+          <Link href="/login" style={{ color: "var(--text-secondary)" }}>
+            Sign in
+          </Link>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+            <Link href={`/users/${me.username}`} style={{ color: "var(--text)" }}>
+              {me.display_name || me.username}
+            </Link>
+            <button
+              onClick={signOut}
+              style={{
+                background: "none",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+                color: "var(--text-secondary)",
+                font: "inherit",
+              }}
+            >
+              Sign out
+            </button>
+          </div>
+        )}
       </div>
     </nav>
   );

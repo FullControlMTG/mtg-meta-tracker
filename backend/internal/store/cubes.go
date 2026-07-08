@@ -10,11 +10,11 @@ import (
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
 )
 
-const cubeCols = `id, name, moxfield_public_id, description, last_synced_at, created_at`
+const cubeCols = `id, name, moxfield_public_id, description, content_hash, last_synced_at, created_at`
 
 func scanCube(row pgx.Row) (*domain.Cube, error) {
 	var c domain.Cube
-	err := row.Scan(&c.ID, &c.Name, &c.MoxfieldPublicID, &c.Description, &c.LastSyncedAt, &c.CreatedAt)
+	err := row.Scan(&c.ID, &c.Name, &c.MoxfieldPublicID, &c.Description, &c.ContentHash, &c.LastSyncedAt, &c.CreatedAt)
 	if err != nil {
 		return nil, normErr(err)
 	}
@@ -74,8 +74,12 @@ func (s *Store) DeleteCube(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (s *Store) SetCubeSynced(ctx context.Context, id uuid.UUID, t time.Time) error {
-	_, err := s.pool.Exec(ctx, `UPDATE cubes SET last_synced_at=$2 WHERE id=$1`, id, t)
+// SetCubeSyncState records the fingerprint of the last successfully synced
+// Moxfield list along with the sync timestamp. It deliberately leaves the other
+// cube columns untouched so an admin PATCH cannot race/clobber the hash.
+func (s *Store) SetCubeSyncState(ctx context.Context, id uuid.UUID, hash string, t time.Time) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE cubes SET content_hash=$2, last_synced_at=$3 WHERE id=$1`, id, hash, t)
 	return err
 }
 

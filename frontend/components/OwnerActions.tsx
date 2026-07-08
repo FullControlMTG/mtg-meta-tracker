@@ -1,0 +1,38 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { apiGetOptional, type PublicUser } from "@/lib/api";
+
+// Renders owner-only edit affordances on the (server-rendered) deck detail page.
+// Gates client-side by comparing /auth/me against the deck owner.
+export function OwnerActions({
+  deckId,
+  ownerId,
+  gamesPlayed,
+}: {
+  deckId: string;
+  ownerId: string;
+  gamesPlayed: number;
+}) {
+  const [me, setMe] = useState<PublicUser | null | undefined>(undefined);
+
+  useEffect(() => {
+    apiGetOptional<PublicUser>("/auth/me").then(setMe);
+  }, []);
+
+  if (!me || me.id !== ownerId) return null;
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "1rem", margin: "0.5rem 0 0.25rem" }}>
+      <Link href={`/decklists/${deckId}/edit`} className="button">
+        Edit deck
+      </Link>
+      {gamesPlayed === 0 && (
+        <Link href={`/decklists/${deckId}/edit#record`} className="muted">
+          + Add a win/loss record
+        </Link>
+      )}
+    </div>
+  );
+}

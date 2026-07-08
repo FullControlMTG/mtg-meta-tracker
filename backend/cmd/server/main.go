@@ -91,6 +91,9 @@ func main() {
 	})
 	go worker.Run(workerCtx)
 
+	scheduler := jobs.NewScheduler(st, cfg.SyncInterval)
+	go scheduler.Run(workerCtx)
+
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           httpapi.New(st, cfg, resolver).Router(),

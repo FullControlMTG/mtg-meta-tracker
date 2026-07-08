@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS cubes (
     name             text NOT NULL,
     moxfield_public_id text UNIQUE,
     description      text,
+    content_hash     text,           -- fingerprint of last-synced Moxfield list; skip re-sync when unchanged
     last_synced_at   timestamptz,
     created_at       timestamptz NOT NULL DEFAULT now()
 );
@@ -257,3 +258,8 @@ CREATE TABLE IF NOT EXISTS jobs (
 -- only one pending job per dedup_key
 CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_dedup ON jobs(dedup_key) WHERE status = 'pending';
 CREATE INDEX IF NOT EXISTS idx_jobs_pending ON jobs(scheduled_at) WHERE status = 'pending';
+
+-- ---------------------------------------------------------------------------
+-- Idempotent migrations for existing databases
+-- ---------------------------------------------------------------------------
+ALTER TABLE cubes ADD COLUMN IF NOT EXISTS content_hash text;

@@ -4,6 +4,7 @@ import { apiGetOptional, type DecklistDetail } from "@/lib/api";
 import { ColorPips } from "@/components/ColorPips";
 import { CardFan } from "@/components/CardFan";
 import { StatTile } from "@/components/StatTile";
+import { OwnerActions } from "@/components/OwnerActions";
 import { pct } from "@/lib/format";
 
 export const revalidate = 3600;
@@ -35,6 +36,8 @@ export default async function DecklistDetailPage({ params }: { params: { id: str
         {d.archetype && <> · {d.archetype}</>}
       </p>
       {d.description && <p>{d.description}</p>}
+
+      <OwnerActions deckId={d.id} ownerId={d.user_id} gamesPlayed={d.games_played} />
 
       {d.games_played > 0 && (
         <div

@@ -75,6 +75,7 @@ type Cube struct {
 	Name             string     `json:"name"`
 	MoxfieldPublicID *string    `json:"moxfield_public_id,omitempty"`
 	Description      *string    `json:"description,omitempty"`
+	ContentHash      *string    `json:"-"`
 	LastSyncedAt     *time.Time `json:"last_synced_at,omitempty"`
 	CreatedAt        time.Time  `json:"created_at"`
 }

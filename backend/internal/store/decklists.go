@@ -33,6 +33,25 @@ type DecklistFilter struct {
 	UserID *uuid.UUID
 }
 
+// ListCubeDecklistIDs returns the IDs of every decklist in a cube. Used to
+// target on-demand revalidation of the affected deck detail pages.
+func (s *Store) ListCubeDecklistIDs(ctx context.Context, cubeID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id FROM decklists WHERE cube_id=$1`, cubeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // CreateDecklist inserts the decklist and its cards in one transaction.
 func (s *Store) CreateDecklist(ctx context.Context, d *domain.Decklist, cards []domain.DecklistCard) error {
 	tx, err := s.pool.Begin(ctx)

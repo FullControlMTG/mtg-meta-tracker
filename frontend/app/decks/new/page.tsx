@@ -22,6 +22,11 @@ export default function NewDeckPage() {
   const [name, setName] = useState("");
   const [archetype, setArchetype] = useState("");
   const [raw, setRaw] = useState("");
+  // Optional record, if the deck has already been played.
+  const [wins, setWins] = useState("");
+  const [losses, setLosses] = useState("");
+  const [draws, setDraws] = useState("");
+  const [placement, setPlacement] = useState("");
   const [infer, setInfer] = useState<InferResult | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -57,12 +62,23 @@ export default function NewDeckPage() {
     setBusy(true);
     setErr(null);
     try {
-      const detail = await apiPost<DecklistDetail>("/decklists", {
+      const body: Record<string, unknown> = {
         cube_id: cubeId,
         name,
         archetype,
         decklist_raw: raw,
-      });
+      };
+      const w = parseInt(wins, 10) || 0;
+      const l = parseInt(losses, 10) || 0;
+      const d = parseInt(draws, 10) || 0;
+      const p = parseInt(placement, 10);
+      if (w || l || d || !isNaN(p)) {
+        body.wins = w;
+        body.losses = l;
+        body.draws = d;
+        if (!isNaN(p)) body.placement = p;
+      }
+      const detail = await apiPost<DecklistDetail>("/decklists", body);
       router.push(`/decklists/${detail.decklist.id}`);
     } catch (e) {
       setErr(String(e instanceof Error ? e.message : e));
@@ -133,6 +149,26 @@ export default function NewDeckPage() {
           </div>
         )}
 
+        <label style={{ marginTop: "1rem" }}>Record (optional — if already played)</label>
+        <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+          <div>
+            <span className="muted" style={{ fontSize: "0.8rem" }}>Wins</span>
+            <input type="number" min={0} value={wins} onChange={(e) => setWins(e.target.value)} style={{ width: 90 }} />
+          </div>
+          <div>
+            <span className="muted" style={{ fontSize: "0.8rem" }}>Losses</span>
+            <input type="number" min={0} value={losses} onChange={(e) => setLosses(e.target.value)} style={{ width: 90 }} />
+          </div>
+          <div>
+            <span className="muted" style={{ fontSize: "0.8rem" }}>Draws</span>
+            <input type="number" min={0} value={draws} onChange={(e) => setDraws(e.target.value)} style={{ width: 90 }} />
+          </div>
+          <div>
+            <span className="muted" style={{ fontSize: "0.8rem" }}>Placement</span>
+            <input type="number" min={1} value={placement} onChange={(e) => setPlacement(e.target.value)} style={{ width: 90 }} />
+          </div>
+        </div>
+
         {err && <p style={{ color: "var(--bad)", marginTop: "0.75rem" }}>{err}</p>}
 
         <button className="button" style={{ marginTop: "1rem" }} disabled={busy}>
@@ -140,7 +176,7 @@ export default function NewDeckPage() {
         </button>
       </form>
       <p className="muted" style={{ marginTop: "1rem", fontSize: "0.85rem" }}>
-        Add a win/loss record from the deck page after saving.
+        Leave the record blank if you haven&apos;t played yet — you can add it later from the deck page.
       </p>
     </main>
   );

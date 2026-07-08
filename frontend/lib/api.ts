@@ -56,6 +56,7 @@ export const apiDelete = <T>(path: string) => mutate<T>("DELETE", path);
 export interface Cube {
   id: string;
   name: string;
+  moxfield_public_id?: string;
   description?: string;
   last_synced_at?: string;
 }
@@ -81,6 +82,9 @@ export interface Decklist {
   losses: number;
   draws: number;
   placement?: number;
+  event_name?: string;
+  played_at?: string;
+  record_updated_at?: string;
   winrate?: number;
   created_at: string;
 }

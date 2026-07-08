@@ -19,6 +19,9 @@ type Config struct {
 	ScryfallUserAgent   string
 	ScryfallMinInterval time.Duration
 
+	// How often to poll Moxfield-backed cubes for list changes.
+	SyncInterval time.Duration
+
 	RevalidateURL    string
 	RevalidateSecret string
 
@@ -41,6 +44,7 @@ func Load() Config {
 		GoogleRedirectURL:   env("GOOGLE_REDIRECT_URL", ""),
 		ScryfallUserAgent:   env("SCRYFALL_USER_AGENT", "mtg-meta-tracker/0.1"),
 		ScryfallMinInterval: time.Duration(envInt("SCRYFALL_MIN_INTERVAL_MS", 100)) * time.Millisecond,
+		SyncInterval:        time.Duration(envInt("SYNC_INTERVAL_MINUTES", 360)) * time.Minute,
 		RevalidateURL:       env("REVALIDATE_URL", ""),
 		RevalidateSecret:    env("REVALIDATE_SECRET", ""),
 

@@ -17,6 +17,13 @@ func (e *Engine) revalidate(ctx context.Context, cubeID uuid.UUID) {
 		return
 	}
 	paths := []string{"/", "/analytics", "/decklists", "/cubes/" + cubeID.String()}
+	// Also refresh each affected deck's detail page (long-cached at revalidate=3600),
+	// so record/deck edits surface promptly.
+	if ids, err := e.store.ListCubeDecklistIDs(ctx, cubeID); err == nil {
+		for _, id := range ids {
+			paths = append(paths, "/decklists/"+id.String())
+		}
+	}
 	body, _ := json.Marshal(map[string][]string{"paths": paths})
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.cfg.RevalidateURL, bytes.NewReader(body))

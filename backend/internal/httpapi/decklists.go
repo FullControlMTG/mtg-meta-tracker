@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -89,6 +90,14 @@ func (s *Server) handleCreateDecklist(w http.ResponseWriter, r *http.Request) {
 		SourceURL   string `json:"source_url"`
 		DecklistRaw string `json:"decklist_raw"`
 		Status      string `json:"status"`
+		// Optional record, if the deck was already played before listing.
+		GamesPlayed *int       `json:"games_played"`
+		Wins        int        `json:"wins"`
+		Losses      int        `json:"losses"`
+		Draws       int        `json:"draws"`
+		Placement   *int       `json:"placement"`
+		EventName   *string    `json:"event_name"`
+		PlayedAt    *time.Time `json:"played_at"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid body")
@@ -142,9 +151,28 @@ func (s *Server) handleCreateDecklist(w http.ResponseWriter, r *http.Request) {
 	if req.SourceURL != "" {
 		d.SourceURL = &req.SourceURL
 	}
+	// Optional record supplied at create time.
+	hasRecord := req.GamesPlayed != nil || req.Wins > 0 || req.Losses > 0 ||
+		req.Draws > 0 || req.Placement != nil || req.EventName != nil || req.PlayedAt != nil
+	var rec store.DecklistRecord
+	if hasRecord {
+		rec, err = buildRecord(req.GamesPlayed, req.Wins, req.Losses, req.Draws, req.Placement, req.EventName, req.PlayedAt)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
 	if err := s.store.CreateDecklist(r.Context(), d, resolved.Cards); err != nil {
 		writeErr(w, http.StatusInternalServerError, "could not create decklist")
 		return
+	}
+	if hasRecord {
+		if err := s.store.UpdateDecklistRecord(r.Context(), d.ID, rec); err != nil {
+			writeErr(w, http.StatusInternalServerError, "could not save record")
+			return
+		}
+		d, _ = s.store.GetDecklist(r.Context(), d.ID)
 	}
 	s.enqueueRecompute(r, cubeID, "deck_created")
 	writeJSON(w, http.StatusCreated, s.decklistView(r, d))
@@ -238,7 +266,7 @@ func (s *Server) handlePatchDecklistRecord(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var req struct {
-		GamesPlayed int        `json:"games_played"`
+		GamesPlayed *int       `json:"games_played"`
 		Wins        int        `json:"wins"`
 		Losses      int        `json:"losses"`
 		Draws       int        `json:"draws"`
@@ -250,22 +278,10 @@ func (s *Server) handlePatchDecklistRecord(w http.ResponseWriter, r *http.Reques
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if req.GamesPlayed < 0 || req.Wins < 0 || req.Losses < 0 || req.Draws < 0 {
-		writeErr(w, http.StatusBadRequest, "record values must be non-negative")
+	rec, err := buildRecord(req.GamesPlayed, req.Wins, req.Losses, req.Draws, req.Placement, req.EventName, req.PlayedAt)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
 		return
-	}
-	if req.Wins+req.Losses+req.Draws > req.GamesPlayed {
-		writeErr(w, http.StatusBadRequest, "wins+losses+draws exceeds games_played")
-		return
-	}
-	rec := store.DecklistRecord{
-		GamesPlayed: req.GamesPlayed,
-		Wins:        req.Wins,
-		Losses:      req.Losses,
-		Draws:       req.Draws,
-		Placement:   req.Placement,
-		EventName:   req.EventName,
-		PlayedAt:    req.PlayedAt,
 	}
 	if err := s.store.UpdateDecklistRecord(r.Context(), id, rec); err != nil {
 		writeErr(w, statusForStoreErr(err), "could not update record")
@@ -331,6 +347,30 @@ func (s *Server) handleInferColors(w http.ResponseWriter, r *http.Request) {
 		"resolved":       resolvedNames,
 		"unresolved":     resolved.Unresolved,
 	})
+}
+
+// buildRecord validates the optional record fields and assembles a store record.
+// games_played defaults to wins+losses+draws when the caller omits it.
+func buildRecord(gamesPlayed *int, wins, losses, draws int, placement *int, event *string, playedAt *time.Time) (store.DecklistRecord, error) {
+	gp := wins + losses + draws
+	if gamesPlayed != nil {
+		gp = *gamesPlayed
+	}
+	if gp < 0 || wins < 0 || losses < 0 || draws < 0 {
+		return store.DecklistRecord{}, fmt.Errorf("record values must be non-negative")
+	}
+	if wins+losses+draws > gp {
+		return store.DecklistRecord{}, fmt.Errorf("wins+losses+draws exceeds games_played")
+	}
+	return store.DecklistRecord{
+		GamesPlayed: gp,
+		Wins:        wins,
+		Losses:      losses,
+		Draws:       draws,
+		Placement:   placement,
+		EventName:   event,
+		PlayedAt:    playedAt,
+	}, nil
 }
 
 func validStatus(s string) bool {
