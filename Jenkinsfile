@@ -46,8 +46,8 @@ pipeline {
         BOOTSTRAP_ADMIN_EMAIL    = 'admin@fullcontrolmtg.com'
 
         COMPOSE_PROJECT_NAME     = 'mtg-meta-tracker'
-        BACKEND_CONTAINER        = 'mtg-backend'
-        FRONTEND_CONTAINER       = 'frontend'
+        BACKEND_CONTAINER        = 'mtg-cube-backend'
+        FRONTEND_CONTAINER       = 'mtg-cube-frontend'
     }
 
     stages {
