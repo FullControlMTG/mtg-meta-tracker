@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { apiGetOptional, type PublicUser } from "@/lib/api";
+import { useSession } from "@/components/SessionProvider";
 
 // Renders owner-only edit affordances on the (server-rendered) deck detail page.
-// Gates client-side by comparing /auth/me against the deck owner.
+// Gates client-side by comparing the session user against the deck owner.
 export function OwnerActions({
   deckId,
   ownerId,
@@ -15,11 +14,7 @@ export function OwnerActions({
   ownerId: string;
   gamesPlayed: number;
 }) {
-  const [me, setMe] = useState<PublicUser | null | undefined>(undefined);
-
-  useEffect(() => {
-    apiGetOptional<PublicUser>("/auth/me").then(setMe);
-  }, []);
+  const { me } = useSession();
 
   if (!me || me.id !== ownerId) return null;
 

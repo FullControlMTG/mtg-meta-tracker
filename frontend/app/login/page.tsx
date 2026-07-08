@@ -3,9 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiPost, type PublicUser } from "@/lib/api";
+import { useSession } from "@/components/SessionProvider";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { setMe, refresh } = useSession();
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -16,9 +18,12 @@ export default function LoginPage() {
     setBusy(true);
     setErr(null);
     try {
-      await apiPost<PublicUser>("/auth/login", { login, password });
+      const user = await apiPost<PublicUser>("/auth/login", { login, password });
+      // Optimistically flip the nav, then refresh (re-reads session, revalidates
+      // server pages, broadcasts to the user's other tabs) and navigate home.
+      setMe(user);
+      await refresh();
       router.push("/");
-      router.refresh();
     } catch (e) {
       setErr(String(e instanceof Error ? e.message : e));
     } finally {

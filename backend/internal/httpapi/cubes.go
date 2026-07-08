@@ -99,6 +99,10 @@ func (s *Server) handleCreateCube(w http.ResponseWriter, r *http.Request) {
 	if c.MoxfieldPublicID != nil {
 		s.enqueueCubeSync(r, c.ID)
 	}
+	// Bust the public cube listing so the new cube surfaces promptly rather than
+	// waiting out the ISR window. (A Moxfield-backed cube will also revalidate
+	// its own page once the sync's analytics recompute finishes.)
+	s.revalidatePaths([]string{"/", "/cubes"})
 	writeJSON(w, http.StatusCreated, s.cubeView(r, c))
 }
 
@@ -172,5 +176,6 @@ func (s *Server) handleDeleteCube(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, statusForStoreErr(err), "could not delete cube")
 		return
 	}
+	s.revalidatePaths([]string{"/", "/cubes", "/cubes/" + id.String()})
 	w.WriteHeader(http.StatusNoContent)
 }

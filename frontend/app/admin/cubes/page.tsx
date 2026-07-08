@@ -8,8 +8,8 @@ import {
   apiPatch,
   apiDelete,
   type CubeView,
-  type PublicUser,
 } from "@/lib/api";
+import { useSession } from "@/components/SessionProvider";
 
 function fmtDate(s?: string): string {
   if (!s) return "never";
@@ -18,7 +18,7 @@ function fmtDate(s?: string): string {
 }
 
 export default function AdminCubesPage() {
-  const [me, setMe] = useState<PublicUser | null | undefined>(undefined);
+  const { me, refresh: refreshSession } = useSession();
   const [cubes, setCubes] = useState<CubeView[]>([]);
 
   // Form state (create when editingId is null, otherwise update).
@@ -36,9 +36,6 @@ export default function AdminCubesPage() {
   }
 
   useEffect(() => {
-    apiGet<PublicUser>("/auth/me")
-      .then(setMe)
-      .catch(() => setMe(null));
     refresh();
   }, []);
 
@@ -72,6 +69,9 @@ export default function AdminCubesPage() {
       }
       resetForm();
       refresh();
+      // Also update the nav, the public server-rendered cube pages, and the
+      // user's other tabs — not just this page's local list.
+      void refreshSession();
     } catch (e) {
       setErr(String(e instanceof Error ? e.message : e));
     } finally {
@@ -93,6 +93,7 @@ export default function AdminCubesPage() {
       await apiDelete(`/admin/cubes/${cv.cube.id}`);
       if (editingId === cv.cube.id) resetForm();
       refresh();
+      void refreshSession();
     } catch (e) {
       setErr(String(e instanceof Error ? e.message : e));
     }

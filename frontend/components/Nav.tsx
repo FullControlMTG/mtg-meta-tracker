@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { apiGetOptional, apiPost, type PublicUser } from "@/lib/api";
+import { apiPost } from "@/lib/api";
+import { useSession } from "@/components/SessionProvider";
 
 const links = [
   { href: "/", label: "Overview" },
@@ -12,20 +12,17 @@ const links = [
 ];
 
 export function Nav() {
-  // undefined = still loading, null = logged out, object = logged in
-  const [me, setMe] = useState<PublicUser | null | undefined>(undefined);
-
-  useEffect(() => {
-    apiGetOptional<PublicUser>("/auth/me").then(setMe);
-  }, []);
+  const { me, refresh } = useSession();
 
   async function signOut() {
     try {
       await apiPost("/auth/logout");
     } catch {
-      // ignore — clear the client view regardless
+      // ignore — refresh clears the client view regardless
     }
-    window.location.assign("/");
+    // Re-reads the (now cleared) session, revalidates server pages, and
+    // broadcasts the logout to the user's other tabs — no hard reload.
+    await refresh();
   }
 
   return (

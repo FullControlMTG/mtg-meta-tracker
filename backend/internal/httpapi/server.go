@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/config"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/decklist"
+	"github.com/runyanjake/mtg-meta-tracker/backend/internal/revalidate"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/store"
 )
 
@@ -78,6 +80,13 @@ func (s *Server) Router() http.Handler {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "time": time.Now().UTC()})
+}
+
+// revalidatePaths best-effort fires the Next.js revalidation webhook for the
+// given paths without blocking the response. The request context is cancelled
+// once we return, so it runs on a background context.
+func (s *Server) revalidatePaths(paths []string) {
+	go revalidate.Post(context.Background(), nil, s.cfg.RevalidateURL, s.cfg.RevalidateSecret, paths)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
