@@ -19,6 +19,10 @@ type Config struct {
 	ScryfallUserAgent   string
 	ScryfallMinInterval time.Duration
 
+	// Directory for the on-disk card-image cache. Empty falls back to a temp
+	// subdir (ephemeral); mount a volume here for a durable, shared cache.
+	ImageCacheDir string
+
 	// How often to poll Moxfield-backed cubes for list changes.
 	SyncInterval time.Duration
 
@@ -44,6 +48,7 @@ func Load() Config {
 		GoogleRedirectURL:   env("GOOGLE_REDIRECT_URL", ""),
 		ScryfallUserAgent:   env("SCRYFALL_USER_AGENT", "mtg-meta-tracker/0.1"),
 		ScryfallMinInterval: time.Duration(envInt("SCRYFALL_MIN_INTERVAL_MS", 100)) * time.Millisecond,
+		ImageCacheDir:       env("IMAGE_CACHE_DIR", ""),
 		SyncInterval:        time.Duration(envInt("SYNC_INTERVAL_MINUTES", 360)) * time.Minute,
 		RevalidateURL:       env("REVALIDATE_URL", ""),
 		RevalidateSecret:    env("REVALIDATE_SECRET", ""),

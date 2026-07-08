@@ -28,6 +28,32 @@ func (s *Store) UpsertCard(ctx context.Context, c *domain.Card) error {
 	return err
 }
 
+// GetCardImageURL returns the canonical Scryfall image URL for a card and
+// variant (one of "small", "normal", "art_crop"). Returns ErrNotFound when the
+// card is unknown or that variant has no URL.
+func (s *Store) GetCardImageURL(ctx context.Context, id uuid.UUID, variant string) (string, error) {
+	var small, normal, artCrop *string
+	err := s.pool.QueryRow(ctx,
+		`SELECT image_small, image_normal, image_art_crop FROM cards WHERE scryfall_id=$1`, id).
+		Scan(&small, &normal, &artCrop)
+	if err != nil {
+		return "", normErr(err)
+	}
+	var url *string
+	switch variant {
+	case "small":
+		url = small
+	case "art_crop":
+		url = artCrop
+	default: // "normal"
+		url = normal
+	}
+	if url == nil || *url == "" {
+		return "", ErrNotFound
+	}
+	return *url, nil
+}
+
 // LookupCubeCardsByName resolves card names against a cube's active pool,
 // case-insensitively. The returned map is keyed by lower(name).
 func (s *Store) LookupCubeCardsByName(ctx context.Context, cubeID uuid.UUID, names []string) (map[string]domain.Card, error) {

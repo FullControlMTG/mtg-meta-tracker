@@ -12,6 +12,7 @@ import (
 
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/config"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/decklist"
+	"github.com/runyanjake/mtg-meta-tracker/backend/internal/images"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/revalidate"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/store"
 )
@@ -20,10 +21,16 @@ type Server struct {
 	store    *store.Store
 	cfg      config.Config
 	resolver *decklist.Resolver
+	images   *images.Cache
 }
 
 func New(s *store.Store, cfg config.Config, resolver *decklist.Resolver) *Server {
-	return &Server{store: s, cfg: cfg, resolver: resolver}
+	return &Server{
+		store:    s,
+		cfg:      cfg,
+		resolver: resolver,
+		images:   images.New(cfg.ImageCacheDir, cfg.ScryfallUserAgent),
+	}
 }
 
 func (s *Server) Router() http.Handler {
@@ -47,6 +54,8 @@ func (s *Server) Router() http.Handler {
 		r.Get("/cubes", s.handleListCubes)
 		r.Get("/cubes/{id}", s.handleGetCube)
 		r.Get("/cubes/{id}/cards", s.handleGetCubeCards)
+
+		r.Get("/cards/{id}/image", s.handleCardImage)
 
 		r.Get("/decklists", s.handleListDecklists)
 		r.Get("/decklists/{id}", s.handleGetDecklist)

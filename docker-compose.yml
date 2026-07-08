@@ -33,6 +33,9 @@ services:
     environment:
       HTTP_ADDR: ":8080"
       DATABASE_URL: postgres://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/${POSTGRES_DB:?POSTGRES_DB is required}?sslmode=disable
+      IMAGE_CACHE_DIR: /data/images
+    volumes:
+      - /pwspool/software/mtg-meta-tracker/images:/data/images
     depends_on:
       db:
         condition: service_healthy

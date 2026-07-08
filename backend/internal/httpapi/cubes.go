@@ -70,6 +70,42 @@ func (s *Server) handleGetCubeCards(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, cards)
 }
 
+// allowedImageVariants gates the ?v= query so it maps only to real DB columns.
+var allowedImageVariants = map[string]bool{"small": true, "normal": true, "art_crop": true}
+
+// handleCardImage serves a card image from the on-disk cache, downloading it
+// from Scryfall on a miss. Images are immutable per URL, so it advertises a
+// long, immutable cache lifetime to browsers and the Next.js optimizer.
+func (s *Server) handleCardImage(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	variant := r.URL.Query().Get("v")
+	if variant == "" {
+		variant = "normal"
+	}
+	if !allowedImageVariants[variant] {
+		writeErr(w, http.StatusBadRequest, "invalid variant")
+		return
+	}
+
+	src, err := s.store.GetCardImageURL(r.Context(), id, variant)
+	if err != nil {
+		writeErr(w, statusForStoreErr(err), "image not found")
+		return
+	}
+	path, err := s.images.Fetch(r.Context(), id.String()+"-"+variant, src)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "could not fetch image")
+		return
+	}
+
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	http.ServeFile(w, r, path)
+}
+
 func (s *Server) handleCreateCube(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name        string `json:"name"`
