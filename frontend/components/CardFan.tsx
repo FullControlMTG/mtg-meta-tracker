@@ -40,6 +40,10 @@ export function CardFan({ cards }: { cards: FanCard[] }) {
             alt={c.card_name}
             width={CARD_W}
             height={CARD_H}
+            // The backend already serves self-hosted, correctly-sized, immutable images,
+            // so the Next optimizer is a redundant fetch/optimize/cache layer (and an extra
+            // failure surface under a cold-cache burst). Go straight to the source.
+            unoptimized
           />
         </div>
       ))}

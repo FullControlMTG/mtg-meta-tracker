@@ -55,23 +55,7 @@ export default async function CubeDetailPage({ params }: { params: { id: string 
                   · {g.cards.length}
                 </span>
               </h2>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "auto minmax(0, 1fr)",
-                  gap: "2rem",
-                  alignItems: "start",
-                }}
-              >
-                <CardFan cards={g.cards} />
-                <div style={{ columnCount: 2, columnGap: "1.5rem" }}>
-                  {g.cards.map((c) => (
-                    <div key={c.card_id} style={{ breakInside: "avoid" }}>
-                      {c.card_name}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <CardFan cards={g.cards} />
             </section>
           ))}
         </div>
