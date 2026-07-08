@@ -45,6 +45,10 @@ services:
   frontend:
     build:
       context: .
+      args:
+        # Resolved into the /api/* rewrite at build time; the runtime var below
+        # does not affect the already-compiled proxy destination.
+        BACKEND_ORIGIN: http://backend:8080
     container_name: frontend
     restart: unless-stopped
     environment:

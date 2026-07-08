@@ -47,6 +47,7 @@ pipeline {
 
         COMPOSE_PROJECT_NAME     = 'mtg-meta-tracker'
         BACKEND_CONTAINER        = 'mtg-backend'
+        FRONTEND_CONTAINER       = 'frontend'
     }
 
     stages {
@@ -166,22 +167,29 @@ EOF
 
         stage('Health Check') {
             steps {
+                // Gate on both containers: Traefik drops an unhealthy frontend
+                // from its load balancer, which surfaces as a 404 in the browser.
                 sh '''
                     set -eu
-                    deadline=$(( $(date +%s) + 120 ))
-                    while true; do
-                        status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$BACKEND_CONTAINER" 2>/dev/null || echo missing)
-                        case "$status" in
-                            healthy)
-                                echo "backend is healthy"; break ;;
-                            exited|dead|missing)
-                                echo "backend failed to start (status: $status)" >&2
-                                docker logs --tail=50 "$BACKEND_CONTAINER" 2>&1 || true
-                                exit 1 ;;
-                        esac
-                        [ "$(date +%s)" -lt "$deadline" ] || { echo "backend did not become healthy within timeout" >&2; exit 1; }
-                        sleep 3
-                    done
+                    wait_healthy() {
+                        name="$1"
+                        deadline=$(( $(date +%s) + 120 ))
+                        while true; do
+                            status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$name" 2>/dev/null || echo missing)
+                            case "$status" in
+                                healthy)
+                                    echo "$name is healthy"; return 0 ;;
+                                exited|dead|missing)
+                                    echo "$name failed to start (status: $status)" >&2
+                                    docker logs --tail=50 "$name" 2>&1 || true
+                                    return 1 ;;
+                            esac
+                            [ "$(date +%s)" -lt "$deadline" ] || { echo "$name did not become healthy within timeout (last status: $status)" >&2; docker logs --tail=50 "$name" 2>&1 || true; return 1; }
+                            sleep 3
+                        done
+                    }
+                    wait_healthy "$BACKEND_CONTAINER"  || exit 1
+                    wait_healthy "$FRONTEND_CONTAINER" || exit 1
                 '''
             }
         }
