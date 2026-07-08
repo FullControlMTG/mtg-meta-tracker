@@ -206,6 +206,13 @@ func (c *Cache) store(body io.Reader, dest string) error {
 		_ = os.Remove(tmpName)
 		return err
 	}
+	// os.CreateTemp makes the file 0600 (owner-only), which leaves cached images
+	// unreadable by any other user — e.g. a different container UID after a
+	// rebuild. Widen to 0644 so the served files are world-readable.
+	if err := os.Chmod(tmpName, 0o644); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
 	if err := os.Rename(tmpName, dest); err != nil {
 		_ = os.Remove(tmpName)
 		return err
