@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -47,6 +49,7 @@ func (c *Client) FetchCubeCardNames(ctx context.Context, publicID string) ([]str
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", c.userAgent)
+	req.Header.Set("Referer", "https://www.moxfield.com/")
 
 	res, err := c.http.Do(req)
 	if err != nil {
@@ -54,7 +57,16 @@ func (c *Client) FetchCubeCardNames(ctx context.Context, publicID string) ([]str
 	}
 	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("moxfield status %d for deck %s", res.StatusCode, publicID)
+		// Moxfield sits behind Cloudflare and returns 403 for requests it
+		// doesn't recognize as an approved client. Capture the body and a few
+		// diagnostic headers so the failure is actionable from the logs.
+		snippet := readBodySnippet(res.Body)
+		return nil, fmt.Errorf(
+			"moxfield status %d for deck %s (url=%s, server=%q, cf-ray=%q, retry-after=%q, body=%q)",
+			res.StatusCode, publicID, url,
+			res.Header.Get("Server"), res.Header.Get("Cf-Ray"), res.Header.Get("Retry-After"),
+			snippet,
+		)
 	}
 
 	var deck deckResponse
@@ -84,4 +96,12 @@ func (c *Client) FetchCubeCardNames(ctx context.Context, publicID string) ([]str
 		return nil, fmt.Errorf("no mainboard cards found for deck %s", publicID)
 	}
 	return names, nil
+}
+
+// readBodySnippet returns a bounded, single-line excerpt of an error response
+// body suitable for embedding in a log line. Cloudflare block pages are large
+// HTML documents, so we cap the read and collapse whitespace.
+func readBodySnippet(r io.Reader) string {
+	b, _ := io.ReadAll(io.LimitReader(r, 2<<10))
+	return strings.Join(strings.Fields(string(b)), " ")
 }

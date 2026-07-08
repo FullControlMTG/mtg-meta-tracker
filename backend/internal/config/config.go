@@ -19,6 +19,11 @@ type Config struct {
 	ScryfallUserAgent   string
 	ScryfallMinInterval time.Duration
 
+	// User-Agent sent to Moxfield's API. Moxfield sits behind Cloudflare and
+	// blocks unrecognized clients; set this to a browser-like or, ideally, a
+	// Moxfield-approved User-Agent string.
+	MoxfieldUserAgent string
+
 	// Directory for the on-disk card-image cache. Empty falls back to a temp
 	// subdir (ephemeral); mount a volume here for a durable, shared cache.
 	ImageCacheDir string
@@ -48,6 +53,8 @@ func Load() Config {
 		GoogleRedirectURL:   env("GOOGLE_REDIRECT_URL", ""),
 		ScryfallUserAgent:   env("SCRYFALL_USER_AGENT", "mtg-meta-tracker/0.1"),
 		ScryfallMinInterval: time.Duration(envInt("SCRYFALL_MIN_INTERVAL_MS", 100)) * time.Millisecond,
+		MoxfieldUserAgent: env("MOXFIELD_USER_AGENT",
+			"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"),
 		ImageCacheDir:       env("IMAGE_CACHE_DIR", ""),
 		SyncInterval:        time.Duration(envInt("SYNC_INTERVAL_MINUTES", 360)) * time.Minute,
 		RevalidateURL:       env("REVALIDATE_URL", ""),

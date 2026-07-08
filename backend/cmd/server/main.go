@@ -50,7 +50,7 @@ func main() {
 	}
 
 	scry := scryfall.New(cfg.ScryfallUserAgent, cfg.ScryfallMinInterval)
-	mox := moxfield.New(cfg.ScryfallUserAgent)
+	mox := moxfield.New(cfg.MoxfieldUserAgent)
 	syncer := ingest.NewSyncer(st, scry, mox)
 	resolver := decklist.NewResolver(st, scry)
 	engine := analytics.NewEngine(st, cfg)
