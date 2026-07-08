@@ -85,7 +85,7 @@ func (s *Store) SetCubeSyncState(ctx context.Context, id uuid.UUID, hash string,
 
 // ClearCubeContentHash nulls the change-detection fingerprint so the next
 // SyncCube re-resolves the pool even if the card list is unchanged. Used by the
-// admin "Rebuild pool" action to retry names that previously failed to resolve.
+// admin "Sync Scryfall images" action to retry names that previously failed to resolve.
 func (s *Store) ClearCubeContentHash(ctx context.Context, id uuid.UUID) error {
 	_, err := s.pool.Exec(ctx, `UPDATE cubes SET content_hash=NULL WHERE id=$1`, id)
 	return err

@@ -8,6 +8,7 @@ import (
 	"log"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -38,6 +39,10 @@ func (s *Syncer) SyncCube(ctx context.Context, cubeID uuid.UUID) error {
 		return err
 	}
 
+	// Record that a sync is now in progress so the admin page can show it. Errors
+	// here are best-effort — never let progress bookkeeping fail the actual sync.
+	_ = s.store.BeginCubeSyncProgress(ctx, cubeID, "resolving")
+
 	// Parse the pasted list into the set of unique mainboard card names.
 	names := poolNamesFromList(cube.CardList)
 
@@ -47,14 +52,18 @@ func (s *Syncer) SyncCube(ctx context.Context, cubeID uuid.UUID) error {
 	hash := hashNames(names)
 	if cube.ContentHash != nil && *cube.ContentHash == hash {
 		if err := s.store.SetCubeSyncState(ctx, cubeID, hash, time.Now()); err != nil {
+			_ = s.store.FinishCubeSyncProgress(ctx, cubeID, "failed", err.Error())
 			return err
 		}
+		_ = s.store.SetCubeSyncResolved(ctx, cubeID, len(names), 0)
+		_ = s.store.FinishCubeSyncProgress(ctx, cubeID, "done", "")
 		log.Printf("sync cube %s: list unchanged (%d cards), skipped", cubeID, len(names))
 		return nil
 	}
 
 	cards, notFound, err := s.scry.ResolveByNames(ctx, names)
 	if err != nil {
+		_ = s.store.FinishCubeSyncProgress(ctx, cubeID, "failed", err.Error())
 		return fmt.Errorf("scryfall: %w", err)
 	}
 	if len(notFound) > 0 {
@@ -64,15 +73,18 @@ func (s *Syncer) SyncCube(ctx context.Context, cubeID uuid.UUID) error {
 	activeIDs := make([]uuid.UUID, 0, len(cards))
 	for i := range cards {
 		if err := s.store.UpsertCard(ctx, &cards[i]); err != nil {
+			_ = s.store.FinishCubeSyncProgress(ctx, cubeID, "failed", err.Error())
 			return fmt.Errorf("upsert card %s: %w", cards[i].Name, err)
 		}
 		activeIDs = append(activeIDs, cards[i].ScryfallID)
 	}
 
 	if err := s.store.SyncCubeCards(ctx, cubeID, activeIDs); err != nil {
+		_ = s.store.FinishCubeSyncProgress(ctx, cubeID, "failed", err.Error())
 		return fmt.Errorf("sync cube_cards: %w", err)
 	}
 	if err := s.store.SetCubeSyncState(ctx, cubeID, hash, time.Now()); err != nil {
+		_ = s.store.FinishCubeSyncProgress(ctx, cubeID, "failed", err.Error())
 		return err
 	}
 	// Pool changed → refresh analytics for this cube.
@@ -94,11 +106,11 @@ func (s *Syncer) SyncCube(ctx context.Context, cubeID uuid.UUID) error {
 
 // prefetchImages downloads the "normal" image for each resolved card into the
 // shared image cache. The key format mirrors the image endpoint's
-// (<scryfall_id>-<variant>, default variant "normal").
+// (<scryfall_id>-<variant>, default variant "normal"). It also drives the
+// downloading phase of the cube's sync-progress row and marks it done when the
+// downloads finish — this goroutine outlives the job, so the progress row (not
+// the job status) reflects when images are actually ready.
 func (s *Syncer) prefetchImages(ctx context.Context, cubeID uuid.UUID, cards []domain.Card) {
-	if s.images == nil {
-		return
-	}
 	items := make([]images.PrefetchItem, 0, len(cards))
 	for i := range cards {
 		if cards[i].ImageNormal == nil || *cards[i].ImageNormal == "" {
@@ -109,10 +121,34 @@ func (s *Syncer) prefetchImages(ctx context.Context, cubeID uuid.UUID, cards []d
 			URL: *cards[i].ImageNormal,
 		})
 	}
-	if len(items) == 0 {
+
+	// Enter the downloading phase with known totals before any bytes move.
+	_ = s.store.SetCubeSyncResolved(ctx, cubeID, len(cards), len(items))
+
+	if s.images == nil || len(items) == 0 {
+		_ = s.store.FinishCubeSyncProgress(ctx, cubeID, "done", "")
 		return
 	}
-	failed := s.images.Prefetch(ctx, items)
+
+	// Throttle progress writes: the callback fires once per downloaded image, but
+	// we only persist the running counters ~twice a second to keep DB load low.
+	var mu sync.Mutex
+	lastWrite := time.Time{}
+	failed := s.images.Prefetch(ctx, items, func(done, failedSoFar int) {
+		mu.Lock()
+		if time.Since(lastWrite) >= 500*time.Millisecond {
+			lastWrite = time.Now()
+			mu.Unlock()
+			_ = s.store.SetCubeSyncImages(ctx, cubeID, done, failedSoFar)
+			return
+		}
+		mu.Unlock()
+	})
+	// Final flush + mark done so the last few images and the failed count land
+	// even if they arrived inside the throttle window.
+	_ = s.store.SetCubeSyncImages(ctx, cubeID, len(items)-failed, failed)
+	_ = s.store.FinishCubeSyncProgress(ctx, cubeID, "done", "")
+
 	log.Printf("sync cube %s: prefetched %d/%d images (%d failed)",
 		cubeID, len(items)-failed, len(items), failed)
 }

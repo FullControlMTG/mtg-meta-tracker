@@ -265,3 +265,22 @@ CREATE INDEX IF NOT EXISTS idx_jobs_pending ON jobs(scheduled_at) WHERE status =
 -- ---------------------------------------------------------------------------
 ALTER TABLE cubes ADD COLUMN IF NOT EXISTS content_hash text;
 ALTER TABLE cubes ADD COLUMN IF NOT EXISTS card_list text;
+
+-- Per-cube progress for the admin "Sync Scryfall images" action. One row per
+-- cube, upserted on each sync (the sync_cube:<id> dedup key means at most one
+-- active sync per cube). The admin page polls this to show live progress; the
+-- image-download phase runs detached from the job and updates images_done here,
+-- so this row — not the job's status — is the source of truth for "finished".
+CREATE TABLE IF NOT EXISTS cube_sync_progress (
+    cube_id       uuid PRIMARY KEY REFERENCES cubes(id) ON DELETE CASCADE,
+    status        text NOT NULL DEFAULT 'queued'
+                    CHECK (status IN ('queued','resolving','downloading','done','failed')),
+    cards_total   int NOT NULL DEFAULT 0,
+    images_total  int NOT NULL DEFAULT 0,
+    images_done   int NOT NULL DEFAULT 0,
+    images_failed int NOT NULL DEFAULT 0,
+    error         text,
+    started_at    timestamptz NOT NULL DEFAULT now(),
+    updated_at    timestamptz NOT NULL DEFAULT now(),
+    finished_at   timestamptz
+);

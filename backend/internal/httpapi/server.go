@@ -80,6 +80,7 @@ func (s *Server) Router() http.Handler {
 			r.Patch("/admin/cubes/{id}", s.handlePatchCube)
 			r.Delete("/admin/cubes/{id}", s.handleDeleteCube)
 			r.Post("/admin/cubes/{id}/sync", s.handleSyncCube)
+			r.Get("/admin/cubes/{id}/sync-status", s.handleCubeSyncStatus)
 
 			r.Post("/admin/analytics/recompute", s.handleRecomputeAnalytics)
 		})

@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   apiGet,
+  apiGetNoStore,
   apiPost,
   apiPatch,
   apiDelete,
   type CubeView,
+  type CubeSyncStatus,
 } from "@/lib/api";
 import { useSession } from "@/components/SessionProvider";
 
@@ -28,9 +30,11 @@ export default function AdminCubesPage() {
   const [description, setDescription] = useState("");
   const [cardList, setCardList] = useState("");
   const [err, setErr] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [syncingId, setSyncingId] = useState<string | null>(null);
+  // Live sync progress, keyed by cube id, polled from /admin/cubes/{id}/sync-status.
+  const [progress, setProgress] = useState<Record<string, CubeSyncStatus>>({});
+  // Active poll timers, keyed by cube id, so we can stop them on completion/unmount.
+  const timers = useRef<Record<string, ReturnType<typeof setInterval>>>({});
 
   function refresh() {
     apiGet<CubeView[]>("/cubes")
@@ -40,7 +44,25 @@ export default function AdminCubesPage() {
 
   useEffect(() => {
     refresh();
+    // Stop any in-flight polls when the page unmounts.
+    return () => {
+      Object.values(timers.current).forEach(clearInterval);
+      timers.current = {};
+    };
   }, []);
+
+  // A sync is considered active (button disabled, panel shown) in these phases.
+  function isActive(s?: CubeSyncStatus): boolean {
+    return s?.status === "queued" || s?.status === "resolving" || s?.status === "downloading";
+  }
+
+  function stopPolling(id: string) {
+    const t = timers.current[id];
+    if (t) {
+      clearInterval(t);
+      delete timers.current[id];
+    }
+  }
 
   function resetForm() {
     setEditingId(null);
@@ -85,23 +107,39 @@ export default function AdminCubesPage() {
   }
 
   async function sync(id: string) {
-    setSyncingId(id);
     setErr(null);
-    setNotice(null);
+    // Optimistic "queued" so the panel appears instantly, before the first poll.
+    setProgress((p) => ({ ...p, [id]: { status: "queued" } }));
     try {
-      // The rebuild runs as a background job (this returns 202 before it finishes),
-      // so it also re-checks the image cache and downloads any missing card art.
+      // Runs as a background job (returns 202 before it finishes): it re-resolves
+      // the pool against Scryfall and downloads any missing card art. We then poll
+      // /sync-status to show live progress through to completion.
       await apiPost(`/admin/cubes/${id}/sync`);
-      setNotice("Rebuild started — resolving cards and downloading images in the background.");
-      refresh();
-      // The job lands a few seconds later; refresh again so the updated card count
-      // and synced time surface without a manual reload.
-      setTimeout(refresh, 4000);
     } catch (e) {
       setErr(String(e instanceof Error ? e.message : e));
-    } finally {
-      setSyncingId(null);
+      setProgress((p) => {
+        const next = { ...p };
+        delete next[id];
+        return next;
+      });
+      return;
     }
+    stopPolling(id); // in case a previous sync for this cube is still polling
+    const poll = async () => {
+      try {
+        const s = await apiGetNoStore<CubeSyncStatus>(`/admin/cubes/${id}/sync-status`);
+        setProgress((p) => ({ ...p, [id]: s }));
+        if (s.status === "done" || s.status === "failed" || s.status === "none") {
+          stopPolling(id);
+          // Pick up the updated card count and synced time.
+          refresh();
+        }
+      } catch {
+        // Transient error — keep polling; the interval will try again.
+      }
+    };
+    timers.current[id] = setInterval(poll, 1500);
+    void poll(); // fire immediately rather than waiting out the first interval
   }
 
   async function remove(cv: CubeView) {
@@ -189,7 +227,6 @@ export default function AdminCubesPage() {
       </form>
 
       <h2>Cubes</h2>
-      {notice && <p style={{ color: "var(--good, #0a0)", marginTop: 0 }}>{notice}</p>}
       {cubes.length === 0 && <p className="muted">No cubes yet.</p>}
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
         {cubes.map((cv) => (
@@ -221,10 +258,10 @@ export default function AdminCubesPage() {
                   type="button"
                   className="button"
                   onClick={() => sync(cv.cube.id)}
-                  disabled={syncingId === cv.cube.id}
+                  disabled={isActive(progress[cv.cube.id])}
                   style={{ background: "var(--surface)", color: "var(--text)", border: "1px solid var(--border)" }}
                 >
-                  {syncingId === cv.cube.id ? "Rebuilding…" : "Rebuild pool"}
+                  {isActive(progress[cv.cube.id]) ? "Syncing…" : "Sync Scryfall images"}
                 </button>
               )}
               <button
@@ -236,9 +273,74 @@ export default function AdminCubesPage() {
                 Delete
               </button>
             </div>
+            <SyncProgress status={progress[cv.cube.id]} />
           </div>
         ))}
       </div>
     </main>
+  );
+}
+
+// SyncProgress renders the live state of a "Sync Scryfall images" run for one
+// cube: a phase line + progress bar while active, a green summary on success,
+// and a red message on failure. Renders nothing when idle/never-synced.
+function SyncProgress({ status }: { status?: CubeSyncStatus }) {
+  if (!status || status.status === "none") return null;
+
+  const barStyle = { marginTop: "0.5rem", fontSize: "0.85rem" } as const;
+
+  if (status.status === "failed") {
+    return (
+      <p style={{ color: "var(--bad)", ...barStyle }}>
+        ✗ Sync failed{status.error ? `: ${status.error}` : ""}
+      </p>
+    );
+  }
+
+  if (status.status === "done") {
+    return (
+      <p style={{ color: "var(--good, #0a0)", ...barStyle }}>
+        ✓ Synced {status.cards_total ?? 0} cards · {status.images_done ?? 0} images
+        {status.images_failed ? ` · ${status.images_failed} failed` : ""}
+      </p>
+    );
+  }
+
+  // Active: queued | resolving | downloading.
+  const total = status.images_total ?? 0;
+  const done = status.images_done ?? 0;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const label =
+    status.status === "downloading"
+      ? `Downloading images ${done} / ${total}`
+      : status.status === "resolving"
+        ? "Resolving cards…"
+        : "Queued…";
+
+  return (
+    <div style={barStyle}>
+      <span className="muted">{label}</span>
+      {status.status === "downloading" && total > 0 && (
+        <div
+          style={{
+            marginTop: "0.35rem",
+            height: "0.5rem",
+            borderRadius: "0.25rem",
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              width: `${pct}%`,
+              height: "100%",
+              background: "var(--good, #0a0)",
+              transition: "width 0.3s ease",
+            }}
+          />
+        </div>
+      )}
+    </div>
   );
 }

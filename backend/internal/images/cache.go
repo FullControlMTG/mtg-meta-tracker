@@ -107,9 +107,14 @@ type PrefetchItem struct {
 // concurrency semaphore (so this respects the same throttle/retry as on-demand
 // misses — passing hundreds of items will not stampede Scryfall). Failures are
 // logged, not fatal; returns how many items failed to fetch.
-func (c *Cache) Prefetch(ctx context.Context, items []PrefetchItem) (failed int) {
+//
+// If onProgress is non-nil it is called after each item completes, with the
+// running done/failed totals (invoked under the internal lock, so it is called
+// serially — the callback should be cheap or throttle its own side effects).
+func (c *Cache) Prefetch(ctx context.Context, items []PrefetchItem, onProgress func(done, failed int)) (failed int) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
+	done := 0
 	for _, it := range items {
 		if it.URL == "" {
 			continue
@@ -117,12 +122,17 @@ func (c *Cache) Prefetch(ctx context.Context, items []PrefetchItem) (failed int)
 		wg.Add(1)
 		go func(it PrefetchItem) {
 			defer wg.Done()
-			if _, err := c.Fetch(ctx, it.Key, it.URL); err != nil {
-				mu.Lock()
+			_, err := c.Fetch(ctx, it.Key, it.URL)
+			mu.Lock()
+			done++
+			if err != nil {
 				failed++
-				mu.Unlock()
 				log.Printf("image prefetch %s: %v", it.Key, err)
 			}
+			if onProgress != nil {
+				onProgress(done, failed)
+			}
+			mu.Unlock()
 		}(it)
 	}
 	wg.Wait()

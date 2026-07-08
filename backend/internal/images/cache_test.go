@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -49,8 +50,25 @@ func TestPrefetch(t *testing.T) {
 		{Key: "bad-normal", URL: "https://evil.example.com/x.jpg"},
 	}
 
-	if failed := c.Prefetch(context.Background(), items); failed != 1 {
+	// onProgress fires once per non-skipped item (the empty-URL item is skipped),
+	// so two calls with monotonically rising done, ending at done=2, failed=1.
+	var mu sync.Mutex
+	var lastDone, lastFailed, calls int
+	onProgress := func(done, failed int) {
+		mu.Lock()
+		defer mu.Unlock()
+		calls++
+		lastDone, lastFailed = done, failed
+	}
+
+	if failed := c.Prefetch(context.Background(), items, onProgress); failed != 1 {
 		t.Fatalf("failed = %d, want 1", failed)
+	}
+	if calls != 2 {
+		t.Fatalf("onProgress calls = %d, want 2", calls)
+	}
+	if lastDone != 2 || lastFailed != 1 {
+		t.Fatalf("final progress = %d done / %d failed, want 2/1", lastDone, lastFailed)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "bad-normal.img")); !os.IsNotExist(err) {
 		t.Fatalf("disallowed item should not have been cached (stat err: %v)", err)

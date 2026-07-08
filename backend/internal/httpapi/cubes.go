@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -228,8 +229,33 @@ func (s *Server) handleSyncCube(w http.ResponseWriter, r *http.Request) {
 	}
 	// Force a full re-resolve even when the list is unchanged.
 	_ = s.store.ClearCubeContentHash(r.Context(), id)
+	// Mark the sync queued right away so the admin page shows immediate feedback
+	// before the worker (which polls every ~2s) claims the job.
+	_ = s.store.BeginCubeSyncProgress(r.Context(), id, "queued")
 	s.enqueueCubeSync(r, id)
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "sync enqueued"})
+}
+
+// handleCubeSyncStatus returns the live progress of the "Sync Scryfall images"
+// action for a cube. A cube that has never been synced has no row; that is
+// reported as {"status":"none"} rather than a 404 so the admin page can treat
+// it as a non-error idle state.
+func (s *Server) handleCubeSyncStatus(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	p, err := s.store.GetCubeSyncProgress(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeJSON(w, http.StatusOK, map[string]string{"status": "none"})
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "could not read sync status")
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
 }
 
 func (s *Server) handleDeleteCube(w http.ResponseWriter, r *http.Request) {

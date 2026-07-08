@@ -26,6 +26,15 @@ export async function apiGetOptional<T>(path: string, revalidate = 60): Promise<
   }
 }
 
+// apiGetNoStore is a client-only GET that skips caching and sends the session
+// cookie — for polling authenticated, fast-changing endpoints (e.g. sync status)
+// where apiGet's ISR caching and cookie-less fetch are both wrong.
+export async function apiGetNoStore<T>(path: string): Promise<T> {
+  const res = await fetch("/api" + path, { credentials: "include", cache: "no-store" });
+  if (!res.ok) throw new Error(`GET ${path}: ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
 async function mutate<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch("/api" + path, {
     method,
@@ -64,6 +73,18 @@ export interface Cube {
 export interface CubeView {
   cube: Cube;
   card_count: number;
+}
+// Live progress of the admin "Sync Scryfall images" action (mirrors the Go
+// store.CubeSyncProgress row). "none" is returned for a never-synced cube.
+export interface CubeSyncStatus {
+  status: "none" | "queued" | "resolving" | "downloading" | "done" | "failed";
+  cards_total?: number;
+  images_total?: number;
+  images_done?: number;
+  images_failed?: number;
+  error?: string | null;
+  started_at?: string;
+  finished_at?: string | null;
 }
 export interface CubeCard {
   card_id: string;
