@@ -17,6 +17,10 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
+# Next.js writes ISR / on-demand revalidation data to .next/cache at runtime.
+# The COPYed .next is root-owned, so pre-create the cache dir owned by the
+# non-root runtime user; otherwise revalidateTag/Path fails with EACCES mkdir.
+RUN mkdir -p .next/cache && chown -R node:node .next
 USER node
 EXPOSE 3000
 # Probe via node (always present) rather than BusyBox wget.

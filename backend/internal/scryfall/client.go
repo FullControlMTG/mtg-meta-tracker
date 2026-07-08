@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 
 const (
 	collectionURL = "https://api.scryfall.com/cards/collection"
+	searchURL     = "https://api.scryfall.com/cards/search"
 	batchSize     = 75
 )
 
@@ -89,13 +92,83 @@ func (c *Client) ResolveByNames(ctx context.Context, names []string) (cards []do
 		cards = append(cards, got...)
 		notFound = append(notFound, nf...)
 	}
+
+	// Fallback for names the collection endpoint can't match. Those are usually
+	// flavor names on Secret Lair / Universes Beyond printings (e.g. "White
+	// Tower of Ecthelion" -> Karakas), which only the search endpoint matches.
+	// Best-effort and one request per name, so it runs only on the remainder.
+	if len(notFound) > 0 {
+		var stillMissing []string
+		for _, name := range notFound {
+			if card, ok := c.searchExact(ctx, name); ok {
+				cards = append(cards, card)
+			} else {
+				stillMissing = append(stillMissing, name)
+			}
+		}
+		notFound = stillMissing
+	}
 	return cards, notFound, nil
+}
+
+// searchExact resolves a single name via the search endpoint using an exact
+// match (!"name"), which — unlike the collection endpoint — also matches a
+// card's flavor name. It is best-effort: any error or non-match yields false so
+// the overall sync still succeeds with whatever else resolved.
+func (c *Client) searchExact(ctx context.Context, name string) (domain.Card, bool) {
+	c.throttle()
+	q := url.Values{}
+	q.Set("q", `!"`+name+`"`)
+	q.Set("unique", "cards")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, searchURL+"?"+q.Encode(), nil)
+	if err != nil {
+		return domain.Card{}, false
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", c.userAgent)
+
+	res, err := c.http.Do(req)
+	if err != nil {
+		return domain.Card{}, false
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode != http.StatusOK { // 404 when nothing matches
+		return domain.Card{}, false
+	}
+	var resp struct {
+		Data []json.RawMessage `json:"data"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil || len(resp.Data) == 0 {
+		return domain.Card{}, false
+	}
+	var sc scryCard
+	if err := json.Unmarshal(resp.Data[0], &sc); err != nil {
+		return domain.Card{}, false
+	}
+	card, err := toDomain(sc, resp.Data[0])
+	if err != nil {
+		return domain.Card{}, false
+	}
+	return card, true
+}
+
+// frontFace reduces a card name to its front face for Scryfall's collection
+// endpoint, which matches a card's front-face name (e.g. "Bonecrusher Giant")
+// but NOT its combined "Front // Back" name. Decklist sources (Moxfield) write
+// double-faced / split / adventure cards as "Front / Back" or "Front // Back";
+// everything before the first slash is the front face. Single-faced names (no
+// slash) are returned unchanged.
+func frontFace(name string) string {
+	if i := strings.IndexByte(name, '/'); i >= 0 {
+		return strings.TrimSpace(name[:i])
+	}
+	return name
 }
 
 func (c *Client) resolveBatch(ctx context.Context, names []string) ([]domain.Card, []string, error) {
 	ids := make([]identifier, len(names))
 	for i, n := range names {
-		ids[i] = identifier{Name: n}
+		ids[i] = identifier{Name: frontFace(n)}
 	}
 	body, _ := json.Marshal(map[string]any{"identifiers": ids})
 
