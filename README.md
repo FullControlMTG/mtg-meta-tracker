@@ -15,7 +15,8 @@ the best in your favorite format's metagame.
 ## Docs
 
 - [`docs/DESIGN.md`](docs/DESIGN.md) — architecture, data model, and the
-  analytics schema (color/card/pair stats, shrinkage + Wilson ranking, synergy).
+  analytics schema (color/card/pair stats), including which derived statistics
+  we deliberately do *not* compute, and why.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — phased build plan.
 
 ## Quickstart (dev)

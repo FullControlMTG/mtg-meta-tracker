@@ -186,31 +186,27 @@ card_stats(run_id, card_id,
            deck_count,            -- how many decks run it
            inclusion_rate,        -- deck_count / total_decks  → popularity
            games, wins, losses,
-           winrate,               -- raw winrate of decks running it
-           winrate_shrunk,        -- Bayesian-smoothed (see §4.5)
-           winrate_lift,          -- winrate_shrunk − global_winrate → power signal
-           wilson_lower)          -- ranking-safe lower bound
+           winrate)               -- winrate of the decks running it
 ```
-- **Popularity** = `inclusion_rate`.
-- **Performance** = `winrate_lift` (how much better decks with this card do vs
-  the field) with `wilson_lower` for honest ranking on small samples.
+- **Popularity** = `inclusion_rate`. This is the table's sort order.
+- **Performance** = `winrate`, read alongside `deck_count`/`games` for context.
+
+Note what `winrate` is *not*: a card's games are its **decks'** games, attributed
+wholesale — every card in a deck inherits that deck's full record. See §4.5.
 
 ### 4.3 Co-occurrence / "played with" — `card_pair_stats`
 
-Powers "cards played with XYZ" suggestions via association-rule metrics:
+Powers the "most often played with" list on a card page:
 
 ```
 card_pair_stats(run_id, card_a_id, card_b_id,
                 co_count,            -- decks with both
-                support,            -- co_count / total_decks
-                confidence_ab,      -- co_count / count(A): P(B | A)
-                lift,               -- support / (support_a * support_b)
-                pair_winrate)
+                pair_winrate)        -- winrate of the decks playing both
 ```
-Stored only for pairs with `co_count >= 2` to bound the n² blow-up. `lift > 1`
-means the pair appears together more than chance — the ranking signal for
-suggestions; `confidence_ab` gives the natural-language "played alongside X in
-Y% of its decks".
+Stored only for pairs with `co_count >= 2` to bound the n² blow-up, both
+directions per pair, ranked by `co_count` descending. Because the ranking is by
+raw co-occurrence, the list skews toward cube staples — it answers "what usually
+shares a deck with this card", not "what is *specifically* associated with it".
 
 ### 4.4 Meta overview + deck-property correlations
 
@@ -223,27 +219,36 @@ deck_metric_stats(run_id, metric, bucket,       -- e.g. metric='avg_cmc'
 ```
 Lets the dashboard chart "does a lower curve win?" and headline meta numbers.
 
-### 4.5 Making the analysis *deeper* (and statistically honest)
+### 4.5 Derived statistics: what we removed, and why
 
-Small-playgroup data is noisy; raw winrates mislead. The engine applies:
+The engine used to compute a Bayesian-shrunk winrate, its **lift** over the
+global mean, a **Wilson** lower bound, and association-rule **support/confidence/
+lift** for pairs. All of it has been removed. The reasoning is worth keeping, so
+nobody reintroduces it by reflex:
 
-1. **Bayesian shrinkage** of every card/color winrate toward the global winrate
-   with a pseudo-count *k* (Beta-Binomial): `(wins + k·μ)/(games + k)`. A card
-   with a 100% winrate over 2 games won't top the chart.
-2. **Wilson score lower bound** for ranking "best cards / colors" — rewards both
-   high winrate *and* sample size.
-3. **Lift, not raw co-occurrence**, for suggestions — surfaces genuinely
-   associated cards, not just staples that appear everywhere.
-4. **Card recommendation** (future endpoint): given a partial list + target color
-   identity, score candidate cards by
-   `α·inclusion_rate + β·winrate_lift + γ·Σ lift(candidate, chosen_i)` — blends
-   "commonly played", "performs well", and "synergizes with your picks".
-5. **Synergy graph**: `card_pair_stats.lift` is an edge list → a network view /
-   "synergy explorer" on the analytics page.
-6. **Time-series**: because runs are retained, we can chart meta evolution
+- **The input doesn't support it.** We record a *per-deck* aggregate (games, wins,
+  losses) — there is no per-game or per-card data. So a card's "games" are its
+  deck's games, attributed wholesale, and every card in a deck shares one number.
+  Shrinkage and Wilson bounds are the right tools for a noisy *sample of a card's
+  own outcomes*; here they were applying rigorous machinery to an attribution that
+  is itself the weak link. They dressed one number up as three.
+- **It was unexplained jargon.** "Lift" and "Wilson" appeared as bare column
+  headers. A stat a reader can't interpret isn't a feature.
+
+What's shown now is what the data actually says: popularity (`inclusion_rate`),
+the record (`deck_count`, `games`, `winrate`), and raw co-occurrence (`co_count`,
+`pair_winrate`) — each with a hover (i) explaining it (`components/InfoHint.tsx`).
+
+**If we want a defensible power signal, the fix is better input, not better math**:
+record results per game (or at least per match), so a card's winrate is about the
+games it was actually in. That would make shrinkage and Wilson meaningful again.
+
+Still open, and unaffected by the above:
+
+1. **Time-series**: because runs are retained, we can chart meta evolution
    (color share, card inclusion) across runs.
-7. **Archetype clustering** (future): vectorize decks by card membership and
-   cluster (Jaccard/k-means) to auto-discover archetypes beyond the free-text tag.
+2. **Archetype clustering**: vectorize decks by card membership and cluster
+   (Jaccard/k-means) to auto-discover archetypes beyond the fixed tag.
 
 **Head-to-head is intentionally out of scope** given the aggregate-record model;
 if per-game matchups are wanted later, add a `matches` table and a matchup facet.
@@ -318,9 +323,8 @@ land-vs-spell handling, etc.
 ## 9. Key frontend pages
 
 - `/` — headline meta dashboard (from `meta_snapshot`).
-- `/analytics` — dense, interactive: color winrate charts, sortable card table
-  (popularity vs lift vs Wilson), synergy explorer, meta trends. Charts built
-  with the `dataviz` guidance.
+- `/analytics` — dense, interactive: color winrate charts, card table ranked by
+  popularity, meta trends. Charts built with the `dataviz` guidance.
 - `/decklists` + `/decklists/[id]` — static/ISR. Detail page is the compact
   **overlaid card fan**: Scryfall images stacked with ~90% overlap (only the top
   ~10% name line peeks) using CSS negative margins, plus record + card stats.

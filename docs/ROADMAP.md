@@ -30,7 +30,7 @@ Phased build. Each phase is independently runnable/verifiable.
 
 ### Phase 4 — Analytics engine + jobs
 - [x] Jobs worker (poll + dedup/coalesce)  *(worker existed; `recompute_analytics` handler added)*
-- [x] Recompute engine → color/card/pair/meta/metric snapshots (incl. shrinkage + Wilson)
+- [x] Recompute engine → color/card/pair/meta/metric snapshots  *(the derived shrinkage/Wilson/pair-lift stats were later removed — see DESIGN §4.5)*
 - [x] Read endpoints for analytics
 - [x] Next.js `/api/revalidate` webhook + on-demand revalidation
 
@@ -42,5 +42,5 @@ Phased build. Each phase is independently runnable/verifiable.
 
 ### Phase 6 — Polish
 - [ ] Scheduled cube sync + card refresh jobs
-- [ ] Recommendation endpoint (popularity + lift + synergy)
+- [ ] Per-game (or per-match) results, so card winrates stop inheriting whole deck records (DESIGN §4.5)
 - [ ] Seed/admin bootstrap, tests, CI

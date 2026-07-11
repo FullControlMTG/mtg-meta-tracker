@@ -11,23 +11,14 @@ import { getCubes } from "@/lib/cube";
 import { COLORS } from "@/lib/colors";
 import { ColorPips } from "@/components/ColorPips";
 import { CubeSwitcher } from "@/components/CubeSwitcher";
+import { InfoHint } from "@/components/InfoHint";
 import { RadarChart, type RadarAxis } from "@/components/RadarChart";
 import { StatTile } from "@/components/StatTile";
-import { num, pct, signedPct } from "@/lib/format";
+import { num, pct } from "@/lib/format";
 
 // The cube's stats page: overview counters and the analytics breakdown, merged.
 // Re-rendered on demand by the backend revalidation webhook; hourly fallback.
 export const revalidate = 3600;
-
-type Sort = "inclusion_rate" | "winrate_lift" | "wilson_lower";
-
-const SORTS: { key: Sort; label: string }[] = [
-  { key: "inclusion_rate", label: "Popularity" },
-  { key: "winrate_lift", label: "Lift" },
-  { key: "wilson_lower", label: "Wilson" },
-];
-
-const isSort = (s?: string): s is Sort => SORTS.some((x) => x.key === s);
 
 // The single_color facet, as one radar axis per WUBRG color: how often each color
 // is played. A 2-color deck counts on both of its axes.
@@ -53,15 +44,8 @@ function colorCountAxes(stats: ColorStat[]): RadarAxis[] {
   }));
 }
 
-export default async function CubeStatsPage({
-  params,
-  searchParams,
-}: {
-  params: { cube: string };
-  searchParams: { sort?: string };
-}) {
+export default async function CubeStatsPage({ params }: { params: { cube: string } }) {
   const cubeId = params.cube;
-  const sort: Sort = isSort(searchParams.sort) ? searchParams.sort : "inclusion_rate";
 
   const [view, cubes] = await Promise.all([
     apiGetOptional<CubeView>(`/cubes/${cubeId}`, 300),
@@ -72,7 +56,7 @@ export default async function CubeStatsPage({
   const [overview, colors, cards] = await Promise.all([
     apiGetOptional<Overview>(`/analytics/overview?cube=${cubeId}`, 3600),
     apiGetOptional<ColorStat[]>(`/analytics/colors?cube=${cubeId}`, 3600),
-    apiGetOptional<CardStat[]>(`/analytics/cards?cube=${cubeId}&sort=${sort}&limit=100`, 3600),
+    apiGetOptional<CardStat[]>(`/analytics/cards?cube=${cubeId}&limit=100`, 3600),
   ]);
 
   const colorStats = colors ?? [];
@@ -153,39 +137,11 @@ export default async function CubeStatsPage({
           </div>
 
           <section className="card" style={{ marginTop: "1.5rem" }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "0.5rem",
-                gap: "1rem",
-                flexWrap: "wrap",
-              }}
-            >
-              <div>
-                <h2 style={{ margin: 0 }}>Cards</h2>
-                <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-                  Basic lands excluded — every deck plays them.
-                </p>
-              </div>
-              <div style={{ display: "flex", gap: 6 }}>
-                {SORTS.map((s) => (
-                  <Link
-                    key={s.key}
-                    href={`/analytics/${cubeId}?sort=${s.key}`}
-                    scroll={false}
-                    className="pill"
-                    style={{
-                      background: sort === s.key ? "var(--accent-weak)" : "transparent",
-                      color: sort === s.key ? "var(--text)" : "var(--text-secondary)",
-                      textDecoration: "none",
-                    }}
-                  >
-                    {s.label}
-                  </Link>
-                ))}
-              </div>
+            <div style={{ marginBottom: "0.5rem" }}>
+              <h2 style={{ margin: 0 }}>Cards</h2>
+              <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+                Most played first. Basic lands excluded — every deck plays them.
+              </p>
             </div>
             <div style={{ overflowX: "auto" }}>
               <table>
@@ -193,10 +149,14 @@ export default async function CubeStatsPage({
                   <tr>
                     <th>Card</th>
                     <th className="num">Decks</th>
-                    <th className="num">Incl.</th>
-                    <th className="num">WR</th>
-                    <th className="num">Lift</th>
-                    <th className="num">Wilson</th>
+                    <th className="num">
+                      Incl.
+                      <InfoHint text="Share of decks in this cube that play the card." />
+                    </th>
+                    <th className="num">
+                      WR
+                      <InfoHint text="Winrate of the decks playing this card." />
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -219,25 +179,11 @@ export default async function CubeStatsPage({
                       <td className="num">{c.deck_count}</td>
                       <td className="num">{pct(c.inclusion_rate, 0)}</td>
                       <td className="num">{pct(c.winrate)}</td>
-                      <td
-                        className="num"
-                        style={{
-                          color:
-                            (c.winrate_lift ?? 0) > 0
-                              ? "var(--good)"
-                              : (c.winrate_lift ?? 0) < 0
-                              ? "var(--bad)"
-                              : undefined,
-                        }}
-                      >
-                        {signedPct(c.winrate_lift)}
-                      </td>
-                      <td className="num">{pct(c.wilson_lower)}</td>
                     </tr>
                   ))}
                   {cardStats.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="muted">
+                      <td colSpan={4} className="muted">
                         No cards in analyzed decks.
                       </td>
                     </tr>

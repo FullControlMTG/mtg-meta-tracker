@@ -72,7 +72,7 @@ func (s *Server) handleAnalyticsCards(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	stats, err := s.store.ListCardStats(r.Context(), runID, r.URL.Query().Get("sort"), limit)
+	stats, err := s.store.ListCardStats(r.Context(), runID, limit)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "could not load card stats")
 		return

@@ -181,23 +181,12 @@ func aggregate(decks []model.DeckRow, cards []model.DeckCardRow) *model.Results 
 
 	// card_stats
 	for id, a := range cardAgg {
-		row := model.CardStatRow{
+		res.CardStats = append(res.CardStats, model.CardStatRow{
 			CardID: id, DeckCount: a.decks,
 			InclusionRate: float64(a.decks) / float64(totalDecks),
 			Games:         a.games, Wins: a.wins, Losses: a.losses,
 			Winrate: ratePtr(a.wins, a.games),
-		}
-		if mu != nil {
-			s := shrink(a.wins, a.games, *mu, shrinkK)
-			lift := s - *mu
-			row.WinrateShrunk = &s
-			row.WinrateLift = &lift
-		}
-		if a.games > 0 {
-			wl := wilsonLower(a.wins, a.games, wilsonZ)
-			row.WilsonLower = &wl
-		}
-		res.CardStats = append(res.CardStats, row)
+		})
 	}
 
 	// card_pair_stats (both directions per co-occurring pair with co_count >= 2)
@@ -206,21 +195,10 @@ func aggregate(decks []model.DeckRow, cards []model.DeckCardRow) *model.Results 
 			continue
 		}
 		a, b := key[0], key[1]
-		deckA := cardAgg[a].decks
-		deckB := cardAgg[b].decks
-		support := float64(p.coCount) / float64(totalDecks)
-		supportA := float64(deckA) / float64(totalDecks)
-		supportB := float64(deckB) / float64(totalDecks)
-		var lift float64
-		if supportA > 0 && supportB > 0 {
-			lift = support / (supportA * supportB)
-		}
 		pw := ratePtr(p.wins, p.games)
 		res.PairStats = append(res.PairStats,
-			model.PairStatRow{CardA: a, CardB: b, CoCount: p.coCount, Support: support,
-				ConfidenceAB: float64(p.coCount) / float64(deckA), Lift: lift, PairWinrate: pw},
-			model.PairStatRow{CardA: b, CardB: a, CoCount: p.coCount, Support: support,
-				ConfidenceAB: float64(p.coCount) / float64(deckB), Lift: lift, PairWinrate: pw},
+			model.PairStatRow{CardA: a, CardB: b, CoCount: p.coCount, PairWinrate: pw},
+			model.PairStatRow{CardA: b, CardB: a, CoCount: p.coCount, PairWinrate: pw},
 		)
 	}
 
@@ -253,6 +231,15 @@ func aggregate(decks []model.DeckRow, cards []model.DeckCardRow) *model.Results 
 	}
 
 	return res
+}
+
+// ratePtr returns wins/games as a pointer, or nil when games == 0.
+func ratePtr(wins, games int) *float64 {
+	if games == 0 {
+		return nil
+	}
+	r := float64(wins) / float64(games)
+	return &r
 }
 
 func getAcc(m map[int]*acc, key int) *acc {

@@ -43,19 +43,13 @@ type CardStatRow struct {
 	Wins          int
 	Losses        int
 	Winrate       *float64
-	WinrateShrunk *float64
-	WinrateLift   *float64
-	WilsonLower   *float64
 }
 
 type PairStatRow struct {
-	CardA        uuid.UUID
-	CardB        uuid.UUID
-	CoCount      int
-	Support      float64
-	ConfidenceAB float64
-	Lift         float64
-	PairWinrate  *float64
+	CardA       uuid.UUID
+	CardB       uuid.UUID
+	CoCount     int
+	PairWinrate *float64
 }
 
 type MetaSnapshotRow struct {

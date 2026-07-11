@@ -120,6 +120,68 @@ th.num {
   text-align: right;
 }
 
+/* An (i) that explains a stat. Pure CSS, so it works inside a server component.
+   The bubble hangs below and to the left of the mark: these sit in right-aligned
+   columns near the table's right edge, and the table's overflow-x wrapper would
+   clip anything that ran past it. */
+.info-hint {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 4px;
+  cursor: help;
+}
+.info-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  /* th is uppercase, muted and letter-spaced — opt out so the mark reads as an icon. */
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 9px;
+  font-style: italic;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-secondary);
+}
+.info-hint:hover .info-mark,
+.info-hint:focus-visible .info-mark {
+  color: var(--text);
+  border-color: var(--text-secondary);
+}
+.info-bubble {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 10;
+  width: 220px;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
+  /* The bubble is a sentence, not a column label — undo the th treatment. */
+  color: var(--text-secondary);
+  text-transform: none;
+  text-align: left;
+  letter-spacing: normal;
+  font-size: 0.78rem;
+  font-weight: 400;
+  line-height: 1.35;
+  white-space: normal;
+  opacity: 0;
+  visibility: hidden;
+}
+.info-hint:hover .info-bubble,
+.info-hint:focus-visible .info-bubble {
+  opacity: 1;
+  visibility: visible;
+}
+
 .pill {
   display: inline-flex;
   align-items: center;

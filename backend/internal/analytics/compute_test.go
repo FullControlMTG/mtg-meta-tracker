@@ -74,16 +74,6 @@ func TestAggregateCardStats(t *testing.T) {
 	if a.Winrate == nil || *a.Winrate != 0.5 {
 		t.Fatalf("card A winrate=%v want 0.5", a.Winrate)
 	}
-	// At the global mean, shrunk winrate == mean and lift == 0.
-	if a.WinrateShrunk == nil || math.Abs(*a.WinrateShrunk-0.5) > 1e-9 {
-		t.Fatalf("card A shrunk=%v want 0.5", a.WinrateShrunk)
-	}
-	if a.WinrateLift == nil || math.Abs(*a.WinrateLift) > 1e-9 {
-		t.Fatalf("card A lift=%v want 0", a.WinrateLift)
-	}
-	if a.WilsonLower == nil {
-		t.Fatal("card A wilson_lower should be set")
-	}
 }
 
 func TestAggregatePairsBothDirections(t *testing.T) {
@@ -106,11 +96,8 @@ func TestAggregatePairsBothDirections(t *testing.T) {
 	if ab == nil || ba == nil {
 		t.Fatal("both pair directions must be present")
 	}
-	if ab.CoCount != 2 || ab.Support != 1.0 || ab.Lift != 1.0 {
-		t.Fatalf("pair AB: co=%d support=%v lift=%v", ab.CoCount, ab.Support, ab.Lift)
-	}
-	if ab.ConfidenceAB != 1.0 || ba.ConfidenceAB != 1.0 {
-		t.Fatalf("confidence should be 1.0 both ways")
+	if ab.CoCount != 2 || ba.CoCount != 2 {
+		t.Fatalf("co_count should be 2 both ways, got AB=%d BA=%d", ab.CoCount, ba.CoCount)
 	}
 	if ab.PairWinrate == nil || *ab.PairWinrate != 0.5 {
 		t.Fatalf("pair winrate=%v want 0.5", ab.PairWinrate)

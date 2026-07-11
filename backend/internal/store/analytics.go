@@ -101,19 +101,18 @@ func (s *Store) FinalizeAnalyticsRun(ctx context.Context, runID, cubeID uuid.UUI
 	}
 	for _, c := range r.CardStats {
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO card_stats (run_id, card_id, deck_count, inclusion_rate, games, wins, losses,
-				winrate, winrate_shrunk, winrate_lift, wilson_lower)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+			INSERT INTO card_stats (run_id, card_id, deck_count, inclusion_rate, games, wins, losses, winrate)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
 			runID, c.CardID, c.DeckCount, c.InclusionRate, c.Games, c.Wins, c.Losses,
-			c.Winrate, c.WinrateShrunk, c.WinrateLift, c.WilsonLower); err != nil {
+			c.Winrate); err != nil {
 			return err
 		}
 	}
 	for _, p := range r.PairStats {
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO card_pair_stats (run_id, card_a_id, card_b_id, co_count, support, confidence_ab, lift, pair_winrate)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-			runID, p.CardA, p.CardB, p.CoCount, p.Support, p.ConfidenceAB, p.Lift, p.PairWinrate); err != nil {
+			INSERT INTO card_pair_stats (run_id, card_a_id, card_b_id, co_count, pair_winrate)
+			VALUES ($1,$2,$3,$4,$5)`,
+			runID, p.CardA, p.CardB, p.CoCount, p.PairWinrate); err != nil {
 			return err
 		}
 	}
@@ -254,31 +253,17 @@ type CardStat struct {
 	Games         int       `json:"games"`
 	Wins          int       `json:"wins"`
 	Winrate       *float64  `json:"winrate"`
-	WinrateShrunk *float64  `json:"winrate_shrunk"`
-	WinrateLift   *float64  `json:"winrate_lift"`
-	WilsonLower   *float64  `json:"wilson_lower"`
 }
 
-var cardStatSorts = map[string]string{
-	"inclusion_rate": "cs.inclusion_rate DESC NULLS LAST",
-	"winrate_lift":   "cs.winrate_lift DESC NULLS LAST",
-	"wilson_lower":   "cs.wilson_lower DESC NULLS LAST",
-}
-
-func (s *Store) ListCardStats(ctx context.Context, runID uuid.UUID, sort string, limit int) ([]CardStat, error) {
-	order, ok := cardStatSorts[sort]
-	if !ok {
-		order = cardStatSorts["inclusion_rate"]
-	}
+func (s *Store) ListCardStats(ctx context.Context, runID uuid.UUID, limit int) ([]CardStat, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT cs.card_id, c.name, c.slug, c.image_normal, c.image_art_crop, c.color_identity,
-			cs.deck_count, cs.inclusion_rate, cs.games, cs.wins,
-			cs.winrate, cs.winrate_shrunk, cs.winrate_lift, cs.wilson_lower
+			cs.deck_count, cs.inclusion_rate, cs.games, cs.wins, cs.winrate
 		FROM card_stats cs JOIN cards c ON c.scryfall_id = cs.card_id
-		WHERE cs.run_id=$1 ORDER BY `+order+` LIMIT $2`, runID, limit)
+		WHERE cs.run_id=$1 ORDER BY cs.inclusion_rate DESC NULLS LAST LIMIT $2`, runID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -287,8 +272,7 @@ func (s *Store) ListCardStats(ctx context.Context, runID uuid.UUID, sort string,
 	for rows.Next() {
 		var c CardStat
 		if err := rows.Scan(&c.CardID, &c.Name, &c.Slug, &c.ImageNormal, &c.ImageArtCrop, &c.ColorIdentity,
-			&c.DeckCount, &c.InclusionRate, &c.Games, &c.Wins,
-			&c.Winrate, &c.WinrateShrunk, &c.WinrateLift, &c.WilsonLower); err != nil {
+			&c.DeckCount, &c.InclusionRate, &c.Games, &c.Wins, &c.Winrate); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -302,13 +286,11 @@ func (s *Store) GetCardStat(ctx context.Context, runID, cardID uuid.UUID) (*Card
 	var c CardStat
 	err := s.pool.QueryRow(ctx, `
 		SELECT cs.card_id, c.name, c.slug, c.image_normal, c.image_art_crop, c.color_identity,
-			cs.deck_count, cs.inclusion_rate, cs.games, cs.wins,
-			cs.winrate, cs.winrate_shrunk, cs.winrate_lift, cs.wilson_lower
+			cs.deck_count, cs.inclusion_rate, cs.games, cs.wins, cs.winrate
 		FROM card_stats cs JOIN cards c ON c.scryfall_id = cs.card_id
 		WHERE cs.run_id=$1 AND cs.card_id=$2`, runID, cardID).Scan(
 		&c.CardID, &c.Name, &c.Slug, &c.ImageNormal, &c.ImageArtCrop, &c.ColorIdentity,
-		&c.DeckCount, &c.InclusionRate, &c.Games, &c.Wins,
-		&c.Winrate, &c.WinrateShrunk, &c.WinrateLift, &c.WilsonLower)
+		&c.DeckCount, &c.InclusionRate, &c.Games, &c.Wins, &c.Winrate)
 	if err != nil {
 		return nil, normErr(err)
 	}
@@ -325,26 +307,25 @@ func (s *Store) CardInclusionRank(ctx context.Context, runID uuid.UUID, inclusio
 }
 
 type CardPair struct {
-	CardBID      uuid.UUID `json:"card_b_id"`
-	Name         string    `json:"name"`
-	Slug         string    `json:"slug"`
-	ColorIdent   int       `json:"color_identity"`
-	CoCount      int       `json:"co_count"`
-	Support      float64   `json:"support"`
-	ConfidenceAB float64   `json:"confidence_ab"`
-	Lift         float64   `json:"lift"`
-	PairWinrate  *float64  `json:"pair_winrate"`
+	CardBID     uuid.UUID `json:"card_b_id"`
+	Name        string    `json:"name"`
+	Slug        string    `json:"slug"`
+	ColorIdent  int       `json:"color_identity"`
+	CoCount     int       `json:"co_count"`
+	PairWinrate *float64  `json:"pair_winrate"`
 }
 
+// ListCardPairs returns the cards most often played alongside cardID, most-shared
+// first. Name breaks ties so the list is stable across runs.
 func (s *Store) ListCardPairs(ctx context.Context, runID, cardID uuid.UUID, limit int) ([]CardPair, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 25
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT ps.card_b_id, c.name, c.slug, c.color_identity,
-			ps.co_count, ps.support, ps.confidence_ab, ps.lift, ps.pair_winrate
+		SELECT ps.card_b_id, c.name, c.slug, c.color_identity, ps.co_count, ps.pair_winrate
 		FROM card_pair_stats ps JOIN cards c ON c.scryfall_id = ps.card_b_id
-		WHERE ps.run_id=$1 AND ps.card_a_id=$2 ORDER BY ps.lift DESC LIMIT $3`, runID, cardID, limit)
+		WHERE ps.run_id=$1 AND ps.card_a_id=$2
+		ORDER BY ps.co_count DESC, c.name LIMIT $3`, runID, cardID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -355,7 +336,7 @@ func (s *Store) ListCardPairs(ctx context.Context, runID, cardID uuid.UUID, limi
 	for rows.Next() {
 		var p CardPair
 		if err := rows.Scan(&p.CardBID, &p.Name, &p.Slug, &p.ColorIdent,
-			&p.CoCount, &p.Support, &p.ConfidenceAB, &p.Lift, &p.PairWinrate); err != nil {
+			&p.CoCount, &p.PairWinrate); err != nil {
 			return nil, err
 		}
 		out = append(out, p)

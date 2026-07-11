@@ -192,26 +192,21 @@ CREATE TABLE IF NOT EXISTS card_stats (
     wins           int NOT NULL DEFAULT 0,
     losses         int NOT NULL DEFAULT 0,
     winrate        numeric,           -- raw
-    winrate_shrunk numeric,           -- Bayesian-smoothed toward global mean
-    winrate_lift   numeric,           -- winrate_shrunk - global_winrate
-    wilson_lower   numeric,           -- ranking-safe lower bound
     PRIMARY KEY (run_id, card_id)
 );
-CREATE INDEX IF NOT EXISTS idx_card_stats_lift ON card_stats(run_id, winrate_lift DESC);
 
 CREATE TABLE IF NOT EXISTS card_pair_stats (
     run_id       uuid NOT NULL REFERENCES analytics_runs(id) ON DELETE CASCADE,
     card_a_id    uuid NOT NULL REFERENCES cards(scryfall_id),
     card_b_id    uuid NOT NULL REFERENCES cards(scryfall_id),
     co_count     int NOT NULL,
-    support      numeric NOT NULL,
-    confidence_ab numeric NOT NULL,   -- P(B | A)
-    lift         numeric NOT NULL,
-    pair_winrate numeric,
+    pair_winrate numeric,             -- winrate of the decks playing both
     PRIMARY KEY (run_id, card_a_id, card_b_id),
     CHECK (card_a_id <> card_b_id)
 );
-CREATE INDEX IF NOT EXISTS idx_pair_stats_a ON card_pair_stats(run_id, card_a_id, lift DESC);
+-- idx_pair_stats_a is created in the migrations section below: on an already-created
+-- database it is still keyed on the dropped `lift` column, so CREATE INDEX IF NOT
+-- EXISTS here would no-op against the stale definition.
 
 CREATE TABLE IF NOT EXISTS meta_snapshot (
     run_id          uuid PRIMARY KEY REFERENCES analytics_runs(id) ON DELETE CASCADE,
@@ -320,3 +315,17 @@ ALTER TABLE card_stats  DROP COLUMN IF EXISTS draws;
 ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
 UPDATE users SET email = NULL WHERE btrim(email) = '';
 DROP TABLE IF EXISTS invites;
+
+-- The derived card metrics (Bayesian-shrunk winrate, its lift over the global mean,
+-- the Wilson lower bound) and the association-rule pair metrics (support, confidence,
+-- lift) are no longer computed or shown. A card's games are really its *deck's* games,
+-- attributed wholesale, so these dressed one weak number up as several. Dropping a
+-- column cascades away any index over it, which takes idx_card_stats_lift and the old
+-- lift-keyed idx_pair_stats_a with them; the latter is rebuilt on co_count below.
+ALTER TABLE card_stats      DROP COLUMN IF EXISTS winrate_shrunk;
+ALTER TABLE card_stats      DROP COLUMN IF EXISTS winrate_lift;
+ALTER TABLE card_stats      DROP COLUMN IF EXISTS wilson_lower;
+ALTER TABLE card_pair_stats DROP COLUMN IF EXISTS lift;
+ALTER TABLE card_pair_stats DROP COLUMN IF EXISTS support;
+ALTER TABLE card_pair_stats DROP COLUMN IF EXISTS confidence_ab;
+CREATE INDEX IF NOT EXISTS idx_pair_stats_a ON card_pair_stats(run_id, card_a_id, co_count DESC);

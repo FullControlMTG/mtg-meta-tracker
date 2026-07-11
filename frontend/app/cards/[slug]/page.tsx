@@ -5,9 +5,10 @@ import { apiGetOptional, type CardDetail } from "@/lib/api";
 import { getDefaultCube } from "@/lib/cube";
 import { ColorPips } from "@/components/ColorPips";
 import { ColorWinrateChart } from "@/components/ColorWinrateChart";
+import { InfoHint } from "@/components/InfoHint";
 import { RadarChart, type RadarAxis } from "@/components/RadarChart";
 import { StatTile } from "@/components/StatTile";
-import { num, pct, signedPct } from "@/lib/format";
+import { num, pct } from "@/lib/format";
 
 export const revalidate = 300;
 
@@ -108,8 +109,6 @@ export default async function CardPage({
             <StatTile value={String(stat.deck_count)} label="Decks including" />
             <StatTile value={String(stat.games)} label="Games with" />
             <StatTile value={pct(stat.winrate)} label="Winrate" />
-            <StatTile value={signedPct(stat.winrate_lift)} label="Winrate lift" />
-            <StatTile value={pct(stat.wilson_lower)} label="Wilson lower" />
             {detail.rank_by_inclusion != null && (
               <StatTile
                 value={`#${detail.rank_by_inclusion}`}
@@ -146,11 +145,9 @@ export default async function CardPage({
           </div>
 
           <section className="card" style={{ marginTop: "1.5rem" }}>
-            <h2>Top 10 played with</h2>
+            <h2>Most often played with</h2>
             <p className="muted" style={{ marginTop: "-0.25rem" }}>
-              Cards that appear alongside this one more than chance would predict.
-              Lift is how many times likelier than chance; confidence is the share of
-              this card&apos;s decks that also play it.
+              The cards that most often share a deck with this one.
             </p>
             {pairs.length === 0 ? (
               <p className="muted">No co-occurring cards yet (needs ≥2 shared decks).</p>
@@ -160,9 +157,14 @@ export default async function CardPage({
                   <thead>
                     <tr>
                       <th>Card</th>
-                      <th className="num">Lift</th>
-                      <th className="num">Confidence</th>
-                      <th className="num">Shared decks</th>
+                      <th className="num">
+                        Shared decks
+                        <InfoHint text="Number of decks sharing both cards." />
+                      </th>
+                      <th className="num">
+                        Winrate together
+                        <InfoHint text="Winrate when played in the same deck." />
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -182,9 +184,8 @@ export default async function CardPage({
                             {p.name}
                           </Link>
                         </td>
-                        <td className="num">{p.lift.toFixed(2)}×</td>
-                        <td className="num">{pct(p.confidence_ab, 0)}</td>
                         <td className="num">{p.co_count}</td>
+                        <td className="num">{pct(p.pair_winrate)}</td>
                       </tr>
                     ))}
                   </tbody>

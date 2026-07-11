@@ -212,9 +212,6 @@ export interface CardStat {
   games: number;
   wins: number;
   winrate: number | null;
-  winrate_shrunk: number | null;
-  winrate_lift: number | null;
-  wilson_lower: number | null;
 }
 export interface CardPair {
   card_b_id: string;
@@ -222,9 +219,6 @@ export interface CardPair {
   slug: string;
   color_identity: number;
   co_count: number;
-  support: number;
-  confidence_ab: number;
-  lift: number;
   pair_winrate: number | null;
 }
 
