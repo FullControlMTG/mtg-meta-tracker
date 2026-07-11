@@ -23,6 +23,20 @@ services:
       timeout: 3s
       retries: 10
 
+  # Docker creates a missing bind-mount source as root:root, but the backend runs
+  # as uid 10001 and has to write downloaded card images into it — so without this
+  # every image download fails with EACCES and the card endpoint 502s. Run-once
+  # (no restart policy); a no-op once the ownership is already correct.
+  images-init:
+    image: alpine:3.20
+    container_name: mtg-cube-images-init
+    user: "0:0"
+    volumes:
+      - /pwspool/software/mtg-meta-tracker/images:/data/images
+    command: chown -R 10001:10001 /data/images
+    networks:
+      - appnet
+
   backend:
     build:
       context: ./backend
@@ -39,6 +53,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      images-init:
+        condition: service_completed_successfully
     networks:
       - appnet
 

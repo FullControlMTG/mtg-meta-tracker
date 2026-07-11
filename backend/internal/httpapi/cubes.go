@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 
@@ -107,6 +108,9 @@ func (s *Server) handleCardImage(w http.ResponseWriter, r *http.Request) {
 	}
 	path, err := s.images.Fetch(r.Context(), id.String()+"-"+variant, src)
 	if err != nil {
+		// Log the cause: the 502 body is deliberately vague, and a silent one made
+		// an unwritable cache dir look identical to a Scryfall outage.
+		log.Printf("card image %s (%s): %v", id, variant, err)
 		writeErr(w, http.StatusBadGateway, "could not fetch image")
 		return
 	}

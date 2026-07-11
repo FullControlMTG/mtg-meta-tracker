@@ -61,6 +61,31 @@ func New(dir, userAgent string) *Cache {
 	}
 }
 
+// Dir returns the resolved cache directory.
+func (c *Cache) Dir() string { return c.dir }
+
+// Probe checks that the cache directory exists and is writable by this process,
+// by creating and removing a temp file the same way store does. Callers should
+// treat a failure as fatal at startup: a cache dir we cannot write to means every
+// image request 502s, and a bind mount whose ownership doesn't match the runtime
+// UID is otherwise silent — MkdirAll succeeds on an existing root-owned dir and
+// only the later CreateTemp fails, once per request.
+func (c *Cache) Probe() error {
+	if err := os.MkdirAll(c.dir, 0o755); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(c.dir, "probe-*")
+	if err != nil {
+		return err
+	}
+	name := f.Name()
+	if err := f.Close(); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	return os.Remove(name)
+}
+
 // Fetch returns the local filesystem path for key, downloading from sourceURL on
 // a miss. Concurrent misses for the same key are collapsed via singleflight.
 func (c *Cache) Fetch(ctx context.Context, key, sourceURL string) (string, error) {

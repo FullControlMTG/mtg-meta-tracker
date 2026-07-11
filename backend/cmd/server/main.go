@@ -51,6 +51,10 @@ func main() {
 
 	scry := scryfall.New(cfg.ScryfallUserAgent, cfg.ScryfallMinInterval)
 	imgCache := images.New(cfg.ImageCacheDir, cfg.ScryfallUserAgent)
+	if err := imgCache.Probe(); err != nil {
+		log.Fatalf("image cache dir %q is not writable: %v", imgCache.Dir(), err)
+	}
+	log.Printf("image cache dir: %s", imgCache.Dir())
 	syncer := ingest.NewSyncer(st, scry, imgCache)
 	resolver := decklist.NewResolver(st, scry)
 	engine := analytics.NewEngine(st, cfg)
