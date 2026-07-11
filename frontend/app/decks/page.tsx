@@ -3,10 +3,13 @@ import { apiGetOptional, type DecklistListItem } from "@/lib/api";
 import { ColorPips } from "@/components/ColorPips";
 import { pct } from "@/lib/format";
 
-export const revalidate = 3600;
+// Rendered per request. As a static page this was prerendered during `next build`,
+// where the backend does not exist, so it shipped an empty deck list and served it
+// for a full revalidate window.
+export const dynamic = "force-dynamic";
 
 export default async function DecklistsPage() {
-  const decks = (await apiGetOptional<DecklistListItem[]>("/decklists", 3600)) ?? [];
+  const decks = (await apiGetOptional<DecklistListItem[]>("/decklists", 0)) ?? [];
 
   return (
     <main className="container">

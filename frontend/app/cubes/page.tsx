@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getCubes } from "@/lib/cube";
 
-export const revalidate = 300;
+export const dynamic = "force-dynamic";
 
 function fmtDate(s?: string): string {
   if (!s) return "never";
@@ -10,7 +10,7 @@ function fmtDate(s?: string): string {
 }
 
 export default async function CubesPage() {
-  const cubes = await getCubes();
+  const cubes = await getCubes(0);
 
   return (
     <main className="container">

@@ -2,10 +2,10 @@ import { redirect } from "next/navigation";
 import { getDefaultCube } from "@/lib/cube";
 
 // Bare /analytics has no meaning — stats belong to a cube. Land on the first one.
-export const revalidate = 300;
+export const dynamic = "force-dynamic";
 
 export default async function AnalyticsIndex() {
-  const cube = await getDefaultCube();
+  const cube = await getDefaultCube(0);
   if (cube) redirect(`/analytics/${cube.cube.id}`);
 
   return (

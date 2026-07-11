@@ -10,8 +10,16 @@ function base(): string {
   return "";
 }
 
+// A revalidate of 0 means never cache. The index pages render per request and must
+// reflect the live database: an ISR entry there would be built during `next build`,
+// where the backend is unreachable, and the resulting empty page would be served
+// until the window expired.
+function cacheOpts(revalidate: number): RequestInit {
+  return revalidate === 0 ? { cache: "no-store" } : { next: { revalidate } };
+}
+
 export async function apiGet<T>(path: string, revalidate = 60): Promise<T> {
-  const res = await fetch(base() + "/api" + path, { next: { revalidate } });
+  const res = await fetch(base() + "/api" + path, cacheOpts(revalidate));
   if (!res.ok) throw new Error(`GET ${path}: ${res.status}`);
   return res.json() as Promise<T>;
 }
@@ -20,10 +28,13 @@ export async function apiGet<T>(path: string, revalidate = 60): Promise<T> {
 // when the backend is unreachable (e.g. during a build with no server running).
 export async function apiGetOptional<T>(path: string, revalidate = 60): Promise<T | null> {
   try {
-    const res = await fetch(base() + "/api" + path, { next: { revalidate } });
+    const res = await fetch(base() + "/api" + path, cacheOpts(revalidate));
     if (!res.ok) return null;
     return (await res.json()) as T;
-  } catch {
+  } catch (e) {
+    // A page that renders empty because the backend was down is indistinguishable
+    // from one that renders empty because there is no data. Leave a trace.
+    console.warn(`GET ${path}: backend unreachable`, e);
     return null;
   }
 }
