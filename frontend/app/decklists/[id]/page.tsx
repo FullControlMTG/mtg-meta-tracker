@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { apiGetOptional, type DecklistDetail } from "@/lib/api";
+import { apiGetOptional, type DecklistCard, type DecklistDetail } from "@/lib/api";
 import { ColorPips } from "@/components/ColorPips";
 import { CardFan } from "@/components/CardFan";
 import { StatTile } from "@/components/StatTile";
@@ -9,12 +9,32 @@ import { pct } from "@/lib/format";
 
 export const revalidate = 3600;
 
+// A deck's fans live inside the 1040px .container, so cards land at ~248px — larger
+// and more readable than the cube's full-bleed 200px. The cap keeps it that way.
+const DECK_MAX_COLS = 5;
+
+const BOARDS: { key: string; label: string }[] = [
+  { key: "main", label: "Mainboard" },
+  { key: "side", label: "Sideboard" },
+  { key: "maybe", label: "Maybeboard" },
+];
+
+// Card count as played, not as listed: a 17× basic is 17 cards.
+function countCards(cards: DecklistCard[]): number {
+  return cards.reduce((n, c) => n + c.quantity, 0);
+}
+
 export default async function DecklistDetailPage({ params }: { params: { id: string } }) {
   const detail = await apiGetOptional<DecklistDetail>(`/decklists/${params.id}`, 3600);
   if (!detail) notFound();
 
   const { decklist: d, cards, user } = detail;
-  const main = cards.filter((c) => c.board === "main");
+  const sections = BOARDS.map((b) => ({
+    ...b,
+    cards: cards.filter((c) => c.board === b.key),
+  })).filter((s) => s.cards.length > 0);
+  // CardFan drops unresolved cards, so with the text list gone this warning is the
+  // only trace of a card that is in the deck but not on the page. Name the names.
   const unresolved = cards.filter((c) => !c.is_resolved);
 
   return (
@@ -51,47 +71,40 @@ export default async function DecklistDetailPage({ params }: { params: { id: str
         </div>
       )}
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "auto minmax(0, 1fr)",
-          gap: "2rem",
-          marginTop: "1rem",
-          alignItems: "start",
-        }}
-      >
-        <CardFan cards={main} />
-        <div>
-          <h2>Decklist</h2>
-          <div style={{ columnCount: 2, columnGap: "1.5rem" }}>
-            {main.map((c) => (
-              <div
-                key={c.card_name}
-                style={{
-                  breakInside: "avoid",
-                  opacity: c.is_resolved ? 1 : 0.5,
-                }}
-              >
-                <span className="muted">{c.quantity}×</span> {c.card_name}
-                {!c.is_resolved && <span className="muted"> (unresolved)</span>}
-              </div>
-            ))}
-          </div>
-          {unresolved.length > 0 && (
-            <p className="muted" style={{ marginTop: "1rem", fontSize: "0.85rem" }}>
-              {unresolved.length} card{unresolved.length > 1 ? "s" : ""} could not be matched to the
-              card database.
-            </p>
-          )}
-          {d.source_url && (
-            <p style={{ marginTop: "1rem" }}>
-              <a href={d.source_url} target="_blank" rel="noreferrer">
-                Source ↗
-              </a>
-            </p>
-          )}
+      {sections.length === 0 ? (
+        <p className="muted" style={{ marginTop: "1rem" }}>
+          This deck has no cards yet.
+        </p>
+      ) : (
+        <div style={{ marginTop: "1.5rem", display: "flex", flexDirection: "column", gap: "2.5rem" }}>
+          {sections.map((s) => (
+            <section key={s.key}>
+              <h2 style={{ textTransform: "uppercase", letterSpacing: "0.03em", fontSize: "1rem" }}>
+                {s.label}{" "}
+                <span className="muted" style={{ fontWeight: 400 }}>
+                  · {countCards(s.cards)}
+                </span>
+              </h2>
+              <CardFan cards={s.cards} maxCols={DECK_MAX_COLS} />
+            </section>
+          ))}
         </div>
-      </div>
+      )}
+
+      {unresolved.length > 0 && (
+        <p className="muted" style={{ marginTop: "1.5rem", fontSize: "0.85rem" }}>
+          Not shown — {unresolved.length} card{unresolved.length > 1 ? "s" : ""} could not be matched
+          to the card database: {unresolved.map((c) => c.card_name).join(", ")}
+        </p>
+      )}
+
+      {d.source_url && (
+        <p style={{ marginTop: "1rem" }}>
+          <a href={d.source_url} target="_blank" rel="noreferrer">
+            Source ↗
+          </a>
+        </p>
+      )}
     </main>
   );
 }

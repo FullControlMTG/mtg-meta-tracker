@@ -3,24 +3,26 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
-const MIN_CARD_W = 200; // minimum readable card width in px → drives column count
-const MAX_COLS = 8; // a cube section holds far more cards than a deck; more columns → shorter
+const DEFAULT_MIN_CARD_W = 200; // minimum readable card width in px → drives column count
+const DEFAULT_MAX_COLS = 8; // a cube section holds far more cards than a deck; more columns → shorter
 const CARD_RATIO = 88 / 63; // MTG card aspect ratio (height / width)
 const PEEK_RATIO = 0.14; // fraction of a stacked card's height left visible (its title strip)
 
 // Minimal shape shared by DecklistCard and CubeCard. is_resolved is optional —
-// cube cards are always resolved, so treat a missing flag as resolved.
+// cube cards are always resolved, so treat a missing flag as resolved. quantity is
+// optional too — a cube pool is singleton, so only decks ever badge a card.
 type FanCard = {
   card_id?: string;
   card_name: string;
   image_normal?: string;
   is_resolved?: boolean;
+  quantity?: number;
 };
 
 type Dims = { cols: number; cardW: number; cardH: number; strip: number };
 
-function computeDims(containerW: number): Dims {
-  const cols = Math.min(MAX_COLS, Math.max(1, Math.floor(containerW / MIN_CARD_W)));
+function computeDims(containerW: number, maxCols: number, minCardW: number): Dims {
+  const cols = Math.min(maxCols, Math.max(1, Math.floor(containerW / minCardW)));
   const cardW = containerW / cols;
   const cardH = cardW * CARD_RATIO;
   const strip = cardH * PEEK_RATIO;
@@ -36,10 +38,18 @@ function imageSrc(c: FanCard): string | undefined {
 }
 
 // Full-width, responsive, multi-column overlaid spread. The container is measured
-// and split into as many ~200px columns as fit; cards fill sequentially down each
-// column, stacked with ~86% overlap so only each card's title strip peeks. Hovering
-// a card lifts it above its column siblings (see .fan-card in globals.css).
-export function CardFan({ cards }: { cards: FanCard[] }) {
+// and split into as many minCardW-wide columns as fit; cards fill sequentially down
+// each column, stacked with ~86% overlap so only each card's title strip peeks.
+// Hovering a card lifts it above its column siblings (see .fan-card in globals.css).
+export function CardFan({
+  cards,
+  maxCols = DEFAULT_MAX_COLS,
+  minCardW = DEFAULT_MIN_CARD_W,
+}: {
+  cards: FanCard[];
+  maxCols?: number;
+  minCardW?: number;
+}) {
   const withArt = cards.filter((c) => c.is_resolved !== false && imageSrc(c));
   const containerRef = useRef<HTMLDivElement>(null);
   const [dims, setDims] = useState<Dims | null>(null);
@@ -47,12 +57,12 @@ export function CardFan({ cards }: { cards: FanCard[] }) {
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const update = () => setDims(computeDims(el.offsetWidth));
+    const update = () => setDims(computeDims(el.offsetWidth, maxCols, minCardW));
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [maxCols, minCardW]);
 
   if (withArt.length === 0) return null;
 
@@ -90,6 +100,15 @@ export function CardFan({ cards }: { cards: FanCard[] }) {
                   // failure surface under a cold-cache burst). Go straight to the source.
                   unoptimized
                 />
+                {(c.quantity ?? 1) > 1 && (
+                  <span
+                    className="pill fan-qty"
+                    // Sits on the title strip — the only part of a stacked card still visible.
+                    style={{ top: dims.strip * 0.18, right: dims.cardW * 0.06 }}
+                  >
+                    ×{c.quantity}
+                  </span>
+                )}
               </div>
             ))}
           </div>

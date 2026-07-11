@@ -184,3 +184,13 @@ label {
   position: relative;
   z-index: 999 !important;
 }
+
+/* Copy count, pinned to the title strip — the only slice of a stacked card left visible. */
+.fan-qty {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.72);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
+  font-weight: 600;
+  pointer-events: none;
+}
