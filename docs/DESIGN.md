@@ -131,8 +131,6 @@ status            text         -- draft | active | archived
 games_played      int  default 0
 wins              int  default 0
 losses            int  default 0
-draws             int  default 0
-placement         int  null    -- finish in an event, if applicable
 event_name        text null
 played_at         date null
 record_updated_at timestamptz null
@@ -169,8 +167,8 @@ Three facets in one table so the dashboard can slice color performance three way
 
 ```
 color_stats(run_id, facet, facet_key,
-            deck_count, games, wins, losses, draws,
-            winrate, avg_placement)
+            deck_count, games, wins, losses,
+            winrate)
 ```
 - `facet = 'exact_identity'` → `facet_key` = the 0–31 bitset (WUBRG combos).
 - `facet = 'single_color'`  → `facet_key` = one color bit (decks *containing* W…).
@@ -187,7 +185,7 @@ Per pool card, the "picked most" + "performs best" signals from the README:
 card_stats(run_id, card_id,
            deck_count,            -- how many decks run it
            inclusion_rate,        -- deck_count / total_decks  → popularity
-           games, wins, losses, draws,
+           games, wins, losses,
            winrate,               -- raw winrate of decks running it
            winrate_shrunk,        -- Bayesian-smoothed (see §4.5)
            winrate_lift,          -- winrate_shrunk − global_winrate → power signal

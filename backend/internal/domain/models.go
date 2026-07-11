@@ -127,8 +127,6 @@ type Decklist struct {
 	GamesPlayed     int        `json:"games_played"`
 	Wins            int        `json:"wins"`
 	Losses          int        `json:"losses"`
-	Draws           int        `json:"draws"`
-	Placement       *int       `json:"placement,omitempty"`
 	EventName       *string    `json:"event_name,omitempty"`
 	PlayedAt        *time.Time `json:"played_at,omitempty"`
 	RecordUpdatedAt *time.Time `json:"record_updated_at,omitempty"`

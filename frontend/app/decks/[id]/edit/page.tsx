@@ -36,8 +36,6 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
   // Record fields.
   const [wins, setWins] = useState("");
   const [losses, setLosses] = useState("");
-  const [draws, setDraws] = useState("");
-  const [placement, setPlacement] = useState("");
   const [recErr, setRecErr] = useState<string | null>(null);
   const [recBusy, setRecBusy] = useState(false);
   const [recMsg, setRecMsg] = useState<string | null>(null);
@@ -53,12 +51,10 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
         setStatus(d.status);
         setRaw(d.decklist_raw);
         setCubeId(d.cube_id);
-        if (d.games_played > 0 || d.wins || d.losses || d.draws) {
+        if (d.games_played > 0 || d.wins || d.losses) {
           setWins(String(d.wins));
           setLosses(String(d.losses));
-          setDraws(String(d.draws));
         }
-        if (d.placement != null) setPlacement(String(d.placement));
       }
     });
   }, [id]);
@@ -107,13 +103,9 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
     try {
       const w = parseInt(wins, 10) || 0;
       const l = parseInt(losses, 10) || 0;
-      const d = parseInt(draws, 10) || 0;
-      const p = parseInt(placement, 10);
       await apiPatch<DecklistDetail>(`/decklists/${id}/record`, {
         wins: w,
         losses: l,
-        draws: d,
-        placement: isNaN(p) ? null : p,
       });
       setRecMsg("Record saved.");
       router.refresh();
@@ -206,7 +198,7 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
       <form onSubmit={saveRecord} className="card" id="record">
         <h2 style={{ marginTop: 0 }}>Record</h2>
         <p className="muted" style={{ marginTop: 0, fontSize: "0.85rem" }}>
-          Add or update your win/loss record. Games played is the sum of wins, losses and draws.
+          Add or update your win/loss record. Games played is the sum of wins and losses.
         </p>
         <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
           <div>
@@ -216,14 +208,6 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
           <div>
             <span className="muted" style={{ fontSize: "0.8rem" }}>Losses</span>
             <input type="number" min={0} value={losses} onChange={(e) => setLosses(e.target.value)} style={{ width: 90 }} />
-          </div>
-          <div>
-            <span className="muted" style={{ fontSize: "0.8rem" }}>Draws</span>
-            <input type="number" min={0} value={draws} onChange={(e) => setDraws(e.target.value)} style={{ width: 90 }} />
-          </div>
-          <div>
-            <span className="muted" style={{ fontSize: "0.8rem" }}>Placement</span>
-            <input type="number" min={1} value={placement} onChange={(e) => setPlacement(e.target.value)} style={{ width: 90 }} />
           </div>
         </div>
 

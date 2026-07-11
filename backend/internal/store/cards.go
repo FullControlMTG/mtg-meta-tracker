@@ -219,7 +219,6 @@ type DeckBrief struct {
 	GamesPlayed   int       `json:"games_played"`
 	Wins          int       `json:"wins"`
 	Losses        int       `json:"losses"`
-	Draws         int       `json:"draws"`
 	Winrate       *float64  `json:"winrate"`
 	Owner         *string   `json:"owner,omitempty"`
 }
@@ -230,7 +229,7 @@ type DeckBrief struct {
 func (s *Store) ListDecksWithCard(ctx context.Context, cubeID, cardID uuid.UUID) ([]DeckBrief, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT d.id, d.name, d.color_identity, dc.quantity,
-			d.games_played, d.wins, d.losses, d.draws, d.winrate, u.username
+			d.games_played, d.wins, d.losses, d.winrate, u.username
 		FROM decklist_cards dc
 		JOIN decklists d ON d.id = dc.decklist_id
 		LEFT JOIN users u ON u.id = d.user_id
@@ -245,7 +244,7 @@ func (s *Store) ListDecksWithCard(ctx context.Context, cubeID, cardID uuid.UUID)
 	for rows.Next() {
 		var d DeckBrief
 		if err := rows.Scan(&d.ID, &d.Name, &d.ColorIdentity, &d.Quantity,
-			&d.GamesPlayed, &d.Wins, &d.Losses, &d.Draws, &d.Winrate, &d.Owner); err != nil {
+			&d.GamesPlayed, &d.Wins, &d.Losses, &d.Winrate, &d.Owner); err != nil {
 			return nil, err
 		}
 		out = append(out, d)

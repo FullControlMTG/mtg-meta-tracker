@@ -30,7 +30,7 @@ func (s *Store) SetAnalyticsRunFailed(ctx context.Context, runID uuid.UUID) erro
 
 func (s *Store) LoadDecksForAnalytics(ctx context.Context, cubeID uuid.UUID) ([]model.DeckRow, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, color_identity, games_played, wins, losses, draws, placement
+		SELECT id, color_identity, games_played, wins, losses
 		FROM decklists WHERE cube_id=$1 AND status IN ('active','archived')`, cubeID)
 	if err != nil {
 		return nil, err
@@ -39,7 +39,7 @@ func (s *Store) LoadDecksForAnalytics(ctx context.Context, cubeID uuid.UUID) ([]
 	var out []model.DeckRow
 	for rows.Next() {
 		var d model.DeckRow
-		if err := rows.Scan(&d.ID, &d.ColorIdent, &d.Games, &d.Wins, &d.Losses, &d.Draws, &d.Placement); err != nil {
+		if err := rows.Scan(&d.ID, &d.ColorIdent, &d.Games, &d.Wins, &d.Losses); err != nil {
 			return nil, err
 		}
 		out = append(out, d)
@@ -93,18 +93,18 @@ func (s *Store) FinalizeAnalyticsRun(ctx context.Context, runID, cubeID uuid.UUI
 
 	for _, c := range r.ColorStats {
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO color_stats (run_id, facet, facet_key, deck_count, games, wins, losses, draws, winrate, avg_placement)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-			runID, c.Facet, c.FacetKey, c.DeckCount, c.Games, c.Wins, c.Losses, c.Draws, c.Winrate, c.AvgPlacement); err != nil {
+			INSERT INTO color_stats (run_id, facet, facet_key, deck_count, games, wins, losses, winrate)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+			runID, c.Facet, c.FacetKey, c.DeckCount, c.Games, c.Wins, c.Losses, c.Winrate); err != nil {
 			return err
 		}
 	}
 	for _, c := range r.CardStats {
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO card_stats (run_id, card_id, deck_count, inclusion_rate, games, wins, losses, draws,
+			INSERT INTO card_stats (run_id, card_id, deck_count, inclusion_rate, games, wins, losses,
 				winrate, winrate_shrunk, winrate_lift, wilson_lower)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-			runID, c.CardID, c.DeckCount, c.InclusionRate, c.Games, c.Wins, c.Losses, c.Draws,
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+			runID, c.CardID, c.DeckCount, c.InclusionRate, c.Games, c.Wins, c.Losses,
 			c.Winrate, c.WinrateShrunk, c.WinrateLift, c.WilsonLower); err != nil {
 			return err
 		}
@@ -210,20 +210,18 @@ func (s *Store) GetMetaSnapshot(ctx context.Context, runID uuid.UUID) (*MetaSnap
 }
 
 type ColorStat struct {
-	Facet        string   `json:"facet"`
-	FacetKey     int      `json:"facet_key"`
-	DeckCount    int      `json:"deck_count"`
-	Games        int      `json:"games"`
-	Wins         int      `json:"wins"`
-	Losses       int      `json:"losses"`
-	Draws        int      `json:"draws"`
-	Winrate      *float64 `json:"winrate"`
-	AvgPlacement *float64 `json:"avg_placement"`
+	Facet     string   `json:"facet"`
+	FacetKey  int      `json:"facet_key"`
+	DeckCount int      `json:"deck_count"`
+	Games     int      `json:"games"`
+	Wins      int      `json:"wins"`
+	Losses    int      `json:"losses"`
+	Winrate   *float64 `json:"winrate"`
 }
 
 func (s *Store) ListColorStats(ctx context.Context, runID uuid.UUID, facet string) ([]ColorStat, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT facet, facet_key, deck_count, games, wins, losses, draws, winrate, avg_placement
+		SELECT facet, facet_key, deck_count, games, wins, losses, winrate
 		FROM color_stats WHERE run_id=$1 AND ($2='' OR facet=$2)
 		ORDER BY facet, facet_key`, runID, facet)
 	if err != nil {
@@ -236,7 +234,7 @@ func (s *Store) ListColorStats(ctx context.Context, runID uuid.UUID, facet strin
 	for rows.Next() {
 		var c ColorStat
 		if err := rows.Scan(&c.Facet, &c.FacetKey, &c.DeckCount, &c.Games, &c.Wins, &c.Losses,
-			&c.Draws, &c.Winrate, &c.AvgPlacement); err != nil {
+			&c.Winrate); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

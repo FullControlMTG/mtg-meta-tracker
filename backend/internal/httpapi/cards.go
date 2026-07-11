@@ -121,7 +121,6 @@ func addDeckToColorStat(st *store.ColorStat, d store.DeckBrief) {
 	st.Games += d.GamesPlayed
 	st.Wins += d.Wins
 	st.Losses += d.Losses
-	st.Draws += d.Draws
 	if st.Games > 0 {
 		wr := float64(st.Wins) / float64(st.Games)
 		st.Winrate = &wr

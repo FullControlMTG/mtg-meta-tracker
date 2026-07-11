@@ -26,8 +26,6 @@ export default function NewDeckPage() {
   // Optional record, if the deck has already been played.
   const [wins, setWins] = useState("");
   const [losses, setLosses] = useState("");
-  const [draws, setDraws] = useState("");
-  const [placement, setPlacement] = useState("");
   const [infer, setInfer] = useState<InferResult | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -71,13 +69,9 @@ export default function NewDeckPage() {
       };
       const w = parseInt(wins, 10) || 0;
       const l = parseInt(losses, 10) || 0;
-      const d = parseInt(draws, 10) || 0;
-      const p = parseInt(placement, 10);
-      if (w || l || d || !isNaN(p)) {
+      if (w || l) {
         body.wins = w;
         body.losses = l;
-        body.draws = d;
-        if (!isNaN(p)) body.placement = p;
       }
       const detail = await apiPost<DecklistDetail>("/decklists", body);
       router.push(`/decks/${detail.decklist.id}`);
@@ -161,14 +155,6 @@ export default function NewDeckPage() {
           <div>
             <span className="muted" style={{ fontSize: "0.8rem" }}>Losses</span>
             <input type="number" min={0} value={losses} onChange={(e) => setLosses(e.target.value)} style={{ width: 90 }} />
-          </div>
-          <div>
-            <span className="muted" style={{ fontSize: "0.8rem" }}>Draws</span>
-            <input type="number" min={0} value={draws} onChange={(e) => setDraws(e.target.value)} style={{ width: 90 }} />
-          </div>
-          <div>
-            <span className="muted" style={{ fontSize: "0.8rem" }}>Placement</span>
-            <input type="number" min={1} value={placement} onChange={(e) => setPlacement(e.target.value)} style={{ width: 90 }} />
           </div>
         </div>
 

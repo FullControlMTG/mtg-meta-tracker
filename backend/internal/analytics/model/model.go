@@ -12,8 +12,6 @@ type DeckRow struct {
 	Games      int
 	Wins       int
 	Losses     int
-	Draws      int
-	Placement  *int
 }
 
 // DeckCardRow is one resolved main-board card belonging to a deck. TypeLine is
@@ -28,15 +26,13 @@ type DeckCardRow struct {
 }
 
 type ColorStatRow struct {
-	Facet        string
-	FacetKey     int
-	DeckCount    int
-	Games        int
-	Wins         int
-	Losses       int
-	Draws        int
-	Winrate      *float64
-	AvgPlacement *float64
+	Facet     string
+	FacetKey  int
+	DeckCount int
+	Games     int
+	Wins      int
+	Losses    int
+	Winrate   *float64
 }
 
 type CardStatRow struct {
@@ -46,7 +42,6 @@ type CardStatRow struct {
 	Games         int
 	Wins          int
 	Losses        int
-	Draws         int
 	Winrate       *float64
 	WinrateShrunk *float64
 	WinrateLift   *float64

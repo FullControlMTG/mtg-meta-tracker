@@ -10,7 +10,6 @@ import (
 )
 
 func cmc(v float64) *float64 { return &v }
-func placement(v int) *int   { return &v }
 
 // Scenario: two decks over the same two cards A,B. Deck1 (mono-W) wins both
 // games; Deck2 (WU) loses both.
@@ -20,8 +19,8 @@ func buildScenario() ([]model.DeckRow, []model.DeckCardRow, uuid.UUID, uuid.UUID
 	cardA := uuid.New()
 	cardB := uuid.New()
 	decks := []model.DeckRow{
-		{ID: d1, ColorIdent: 1, Games: 2, Wins: 2, Losses: 0, Draws: 0, Placement: placement(1)},
-		{ID: d2, ColorIdent: 3, Games: 2, Wins: 0, Losses: 2, Draws: 0, Placement: placement(2)},
+		{ID: d1, ColorIdent: 1, Games: 2, Wins: 2, Losses: 0},
+		{ID: d2, ColorIdent: 3, Games: 2, Wins: 0, Losses: 2},
 	}
 	cards := []model.DeckCardRow{
 		{DecklistID: d1, CardID: cardA, Quantity: 1, CMC: cmc(1)},
@@ -137,9 +136,9 @@ func TestAggregateColorFacets(t *testing.T) {
 	if u := facets["single_color"][2]; u.DeckCount != 1 || u.Winrate == nil || *u.Winrate != 0 {
 		t.Fatalf("single_color U: deck_count=%d winrate=%v", u.DeckCount, u.Winrate)
 	}
-	// exact_identity mono-W deck has avg placement 1.
-	if e := facets["exact_identity"][1]; e.AvgPlacement == nil || *e.AvgPlacement != 1 {
-		t.Fatalf("exact W avg_placement=%v want 1", e.AvgPlacement)
+	// exact_identity mono-W is only the deck that won both games.
+	if e := facets["exact_identity"][1]; e.DeckCount != 1 || e.Winrate == nil || *e.Winrate != 1 {
+		t.Fatalf("exact W: deck_count=%d winrate=%v", e.DeckCount, e.Winrate)
 	}
 }
 

@@ -25,13 +25,10 @@ func isBasicLand(typeLine *string) bool {
 
 // acc accumulates a win/loss record over a group of decks.
 type acc struct {
-	decks    int
-	games    int
-	wins     int
-	losses   int
-	draws    int
-	placeSum int
-	placeN   int
+	decks  int
+	games  int
+	wins   int
+	losses int
 }
 
 func (a *acc) add(d model.DeckRow) {
@@ -39,19 +36,6 @@ func (a *acc) add(d model.DeckRow) {
 	a.games += d.Games
 	a.wins += d.Wins
 	a.losses += d.Losses
-	a.draws += d.Draws
-	if d.Placement != nil {
-		a.placeSum += *d.Placement
-		a.placeN++
-	}
-}
-
-func (a *acc) avgPlacement() *float64 {
-	if a.placeN == 0 {
-		return nil
-	}
-	v := float64(a.placeSum) / float64(a.placeN)
-	return &v
 }
 
 type pairAcc struct {
@@ -100,7 +84,6 @@ func aggregate(decks []model.DeckRow, cards []model.DeckCardRow) *model.Results 
 		totalGames    int
 		totalWins     int
 		totalLosses   int
-		totalDraws    int
 		colorCountSum int
 		monoCount     int
 		multiCount    int
@@ -120,7 +103,6 @@ func aggregate(decks []model.DeckRow, cards []model.DeckCardRow) *model.Results 
 		totalGames += d.Games
 		totalWins += d.Wins
 		totalLosses += d.Losses
-		totalDraws += d.Draws
 
 		cc := domain.ColorIdentity(d.ColorIdent).Count()
 		colorCountSum += cc
@@ -191,8 +173,8 @@ func aggregate(decks []model.DeckRow, cards []model.DeckCardRow) *model.Results 
 		for key, a := range m {
 			res.ColorStats = append(res.ColorStats, model.ColorStatRow{
 				Facet: facet, FacetKey: key, DeckCount: a.decks,
-				Games: a.games, Wins: a.wins, Losses: a.losses, Draws: a.draws,
-				Winrate: ratePtr(a.wins, a.games), AvgPlacement: a.avgPlacement(),
+				Games: a.games, Wins: a.wins, Losses: a.losses,
+				Winrate: ratePtr(a.wins, a.games),
 			})
 		}
 	}
@@ -202,7 +184,7 @@ func aggregate(decks []model.DeckRow, cards []model.DeckCardRow) *model.Results 
 		row := model.CardStatRow{
 			CardID: id, DeckCount: a.decks,
 			InclusionRate: float64(a.decks) / float64(totalDecks),
-			Games:         a.games, Wins: a.wins, Losses: a.losses, Draws: a.draws,
+			Games:         a.games, Wins: a.wins, Losses: a.losses,
 			Winrate: ratePtr(a.wins, a.games),
 		}
 		if mu != nil {

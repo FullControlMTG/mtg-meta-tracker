@@ -67,10 +67,9 @@ export default async function DecklistDetailPage({ params }: { params: { id: str
           className="grid"
           style={{ gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", margin: "1rem 0" }}
         >
-          <StatTile value={`${d.wins}-${d.losses}-${d.draws}`} label="Record (W-L-D)" />
+          <StatTile value={`${d.wins}-${d.losses}`} label="Record (W-L)" />
           <StatTile value={pct(d.winrate)} label="Winrate" />
           <StatTile value={String(d.games_played)} label="Games" />
-          {d.placement != null && <StatTile value={`#${d.placement}`} label="Placement" />}
         </div>
       )}
 

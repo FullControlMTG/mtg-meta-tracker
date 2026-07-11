@@ -94,8 +94,6 @@ func (s *Server) handleCreateDecklist(w http.ResponseWriter, r *http.Request) {
 		GamesPlayed *int       `json:"games_played"`
 		Wins        int        `json:"wins"`
 		Losses      int        `json:"losses"`
-		Draws       int        `json:"draws"`
-		Placement   *int       `json:"placement"`
 		EventName   *string    `json:"event_name"`
 		PlayedAt    *time.Time `json:"played_at"`
 	}
@@ -157,10 +155,10 @@ func (s *Server) handleCreateDecklist(w http.ResponseWriter, r *http.Request) {
 	}
 	// Optional record supplied at create time.
 	hasRecord := req.GamesPlayed != nil || req.Wins > 0 || req.Losses > 0 ||
-		req.Draws > 0 || req.Placement != nil || req.EventName != nil || req.PlayedAt != nil
+		req.EventName != nil || req.PlayedAt != nil
 	var rec store.DecklistRecord
 	if hasRecord {
-		rec, err = buildRecord(req.GamesPlayed, req.Wins, req.Losses, req.Draws, req.Placement, req.EventName, req.PlayedAt)
+		rec, err = buildRecord(req.GamesPlayed, req.Wins, req.Losses, req.EventName, req.PlayedAt)
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
@@ -281,8 +279,6 @@ func (s *Server) handlePatchDecklistRecord(w http.ResponseWriter, r *http.Reques
 		GamesPlayed *int       `json:"games_played"`
 		Wins        int        `json:"wins"`
 		Losses      int        `json:"losses"`
-		Draws       int        `json:"draws"`
-		Placement   *int       `json:"placement"`
 		EventName   *string    `json:"event_name"`
 		PlayedAt    *time.Time `json:"played_at"`
 	}
@@ -290,7 +286,7 @@ func (s *Server) handlePatchDecklistRecord(w http.ResponseWriter, r *http.Reques
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	rec, err := buildRecord(req.GamesPlayed, req.Wins, req.Losses, req.Draws, req.Placement, req.EventName, req.PlayedAt)
+	rec, err := buildRecord(req.GamesPlayed, req.Wins, req.Losses, req.EventName, req.PlayedAt)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -362,24 +358,22 @@ func (s *Server) handleInferColors(w http.ResponseWriter, r *http.Request) {
 }
 
 // buildRecord validates the optional record fields and assembles a store record.
-// games_played defaults to wins+losses+draws when the caller omits it.
-func buildRecord(gamesPlayed *int, wins, losses, draws int, placement *int, event *string, playedAt *time.Time) (store.DecklistRecord, error) {
-	gp := wins + losses + draws
+// games_played defaults to wins+losses when the caller omits it.
+func buildRecord(gamesPlayed *int, wins, losses int, event *string, playedAt *time.Time) (store.DecklistRecord, error) {
+	gp := wins + losses
 	if gamesPlayed != nil {
 		gp = *gamesPlayed
 	}
-	if gp < 0 || wins < 0 || losses < 0 || draws < 0 {
+	if gp < 0 || wins < 0 || losses < 0 {
 		return store.DecklistRecord{}, fmt.Errorf("record values must be non-negative")
 	}
-	if wins+losses+draws > gp {
-		return store.DecklistRecord{}, fmt.Errorf("wins+losses+draws exceeds games_played")
+	if wins+losses > gp {
+		return store.DecklistRecord{}, fmt.Errorf("wins+losses exceeds games_played")
 	}
 	return store.DecklistRecord{
 		GamesPlayed: gp,
 		Wins:        wins,
 		Losses:      losses,
-		Draws:       draws,
-		Placement:   placement,
 		EventName:   event,
 		PlayedAt:    playedAt,
 	}, nil

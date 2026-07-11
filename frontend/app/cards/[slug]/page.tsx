@@ -221,7 +221,7 @@ export default async function CardPage({
                     </td>
                     <td className="num">{d.quantity}</td>
                     <td className="num">
-                      {d.wins}-{d.losses}-{d.draws}
+                      {d.wins}-{d.losses}
                     </td>
                     <td className="num">{pct(d.winrate)}</td>
                   </tr>

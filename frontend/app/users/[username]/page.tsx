@@ -46,7 +46,7 @@ export default async function UserPage({ params }: { params: { username: string 
                     <ColorPips bits={d.color_identity} showCode />
                   </td>
                   <td className="num">
-                    {d.games_played > 0 ? `${d.wins}-${d.losses}-${d.draws}` : "—"}
+                    {d.games_played > 0 ? `${d.wins}-${d.losses}` : "—"}
                   </td>
                   <td className="num">{pct(d.winrate)}</td>
                 </tr>

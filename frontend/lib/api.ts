@@ -119,8 +119,6 @@ export interface Decklist {
   games_played: number;
   wins: number;
   losses: number;
-  draws: number;
-  placement?: number;
   event_name?: string;
   played_at?: string;
   record_updated_at?: string;
@@ -191,9 +189,7 @@ export interface ColorStat {
   games: number;
   wins: number;
   losses: number;
-  draws: number;
   winrate: number | null;
-  avg_placement: number | null;
 }
 export interface CardStat {
   card_id: string;
@@ -246,7 +242,6 @@ export interface DeckBrief {
   games_played: number;
   wins: number;
   losses: number;
-  draws: number;
   winrate: number | null;
   owner?: string;
 }

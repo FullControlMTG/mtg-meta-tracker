@@ -12,14 +12,14 @@ import (
 
 const decklistCols = `id, cube_id, user_id, name, description, color_identity, archetype,
 	source_url, decklist_raw, card_count, status,
-	games_played, wins, losses, draws, placement, event_name, played_at, record_updated_at,
+	games_played, wins, losses, event_name, played_at, record_updated_at,
 	winrate, created_at, updated_at`
 
 func scanDecklist(row pgx.Row) (*domain.Decklist, error) {
 	var d domain.Decklist
 	err := row.Scan(&d.ID, &d.CubeID, &d.UserID, &d.Name, &d.Description, &d.ColorIdentity,
 		&d.Archetype, &d.SourceURL, &d.DecklistRaw, &d.CardCount, &d.Status,
-		&d.GamesPlayed, &d.Wins, &d.Losses, &d.Draws, &d.Placement, &d.EventName,
+		&d.GamesPlayed, &d.Wins, &d.Losses, &d.EventName,
 		&d.PlayedAt, &d.RecordUpdatedAt, &d.Winrate, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		return nil, normErr(err)
@@ -216,19 +216,16 @@ type DecklistRecord struct {
 	GamesPlayed int
 	Wins        int
 	Losses      int
-	Draws       int
-	Placement   *int
 	EventName   *string
 	PlayedAt    *time.Time
 }
 
 func (s *Store) UpdateDecklistRecord(ctx context.Context, id uuid.UUID, rec DecklistRecord) error {
 	ct, err := s.pool.Exec(ctx, `
-		UPDATE decklists SET games_played=$2, wins=$3, losses=$4, draws=$5,
-			placement=$6, event_name=$7, played_at=$8, record_updated_at=now(), updated_at=now()
+		UPDATE decklists SET games_played=$2, wins=$3, losses=$4,
+			event_name=$5, played_at=$6, record_updated_at=now(), updated_at=now()
 		WHERE id=$1`,
-		id, rec.GamesPlayed, rec.Wins, rec.Losses, rec.Draws,
-		rec.Placement, rec.EventName, rec.PlayedAt)
+		id, rec.GamesPlayed, rec.Wins, rec.Losses, rec.EventName, rec.PlayedAt)
 	if err != nil {
 		return err
 	}

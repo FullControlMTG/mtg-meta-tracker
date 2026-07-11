@@ -139,8 +139,6 @@ CREATE TABLE IF NOT EXISTS decklists (
     games_played      int NOT NULL DEFAULT 0,
     wins              int NOT NULL DEFAULT 0,
     losses            int NOT NULL DEFAULT 0,
-    draws             int NOT NULL DEFAULT 0,
-    placement         int,
     event_name        text,
     played_at         date,
     record_updated_at timestamptz,
@@ -148,7 +146,7 @@ CREATE TABLE IF NOT EXISTS decklists (
         (CASE WHEN games_played > 0 THEN wins::numeric / games_played END) STORED,
     created_at        timestamptz NOT NULL DEFAULT now(),
     updated_at        timestamptz NOT NULL DEFAULT now(),
-    CHECK (wins + losses + draws <= games_played)
+    CONSTRAINT decklists_record_check CHECK (wins + losses <= games_played)
 );
 CREATE INDEX IF NOT EXISTS idx_decklists_user      ON decklists(user_id);
 CREATE INDEX IF NOT EXISTS idx_decklists_cube      ON decklists(cube_id);
@@ -193,9 +191,7 @@ CREATE TABLE IF NOT EXISTS color_stats (
     games         int NOT NULL DEFAULT 0,
     wins          int NOT NULL DEFAULT 0,
     losses        int NOT NULL DEFAULT 0,
-    draws         int NOT NULL DEFAULT 0,
     winrate       numeric,
-    avg_placement numeric,
     PRIMARY KEY (run_id, facet, facet_key)
 );
 
@@ -207,7 +203,6 @@ CREATE TABLE IF NOT EXISTS card_stats (
     games          int NOT NULL DEFAULT 0,
     wins           int NOT NULL DEFAULT 0,
     losses         int NOT NULL DEFAULT 0,
-    draws          int NOT NULL DEFAULT 0,
     winrate        numeric,           -- raw
     winrate_shrunk numeric,           -- Bayesian-smoothed toward global mean
     winrate_lift   numeric,           -- winrate_shrunk - global_winrate
@@ -318,3 +313,15 @@ UPDATE decklists SET archetype = NULL
 ALTER TABLE decklists DROP CONSTRAINT IF EXISTS decklists_archetype_check;
 ALTER TABLE decklists ADD CONSTRAINT decklists_archetype_check
     CHECK (archetype IN ('aggro','control','midrange','tempo','combo'));
+
+-- Draws and placement are no longer collected. Dropping decklists.draws also drops the
+-- old unnamed CHECK that referenced it, so the record check is re-added under a stable
+-- name (drop-then-add: Postgres has no ADD CONSTRAINT IF NOT EXISTS).
+ALTER TABLE decklists   DROP COLUMN IF EXISTS draws;
+ALTER TABLE decklists   DROP COLUMN IF EXISTS placement;
+ALTER TABLE decklists   DROP CONSTRAINT IF EXISTS decklists_record_check;
+ALTER TABLE decklists   ADD  CONSTRAINT decklists_record_check
+                          CHECK (wins + losses <= games_played);
+ALTER TABLE color_stats DROP COLUMN IF EXISTS draws;
+ALTER TABLE color_stats DROP COLUMN IF EXISTS avg_placement;
+ALTER TABLE card_stats  DROP COLUMN IF EXISTS draws;
