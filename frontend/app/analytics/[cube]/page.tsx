@@ -20,27 +20,31 @@ import { num, pct } from "@/lib/format";
 // Re-rendered on demand by the backend revalidation webhook; hourly fallback.
 export const revalidate = 3600;
 
+// Share of the cube's decks landing on an axis. Null with no decks, so pct()
+// renders an em dash rather than NaN.
+const share = (count: number, total: number) => (total > 0 ? count / total : null);
+
 // The single_color facet, as one radar axis per WUBRG color: how often each color
-// is played. A 2-color deck counts on both of its axes.
-function colorAxes(stats: ColorStat[]): RadarAxis[] {
+// is played. A 2-color deck counts on both of its axes, so the shares sum past 100%.
+function colorAxes(stats: ColorStat[], totalDecks: number): RadarAxis[] {
   const byKey = new Map(stats.filter((s) => s.facet === "single_color").map((s) => [s.facet_key, s]));
   return COLORS.map((c) => ({
     key: c.code,
     label: c.name,
     value: byKey.get(c.bit)?.deck_count ?? 0,
     hex: c.hex,
-    sublabel: pct(byKey.get(c.bit)?.winrate, 0),
+    sublabel: pct(share(byKey.get(c.bit)?.deck_count ?? 0, totalDecks), 0),
   }));
 }
 
 // The color_count facet: how many decks play 1, 2, 3, 4, or 5 colors.
-function colorCountAxes(stats: ColorStat[]): RadarAxis[] {
+function colorCountAxes(stats: ColorStat[], totalDecks: number): RadarAxis[] {
   const byKey = new Map(stats.filter((s) => s.facet === "color_count").map((s) => [s.facet_key, s]));
   return [1, 2, 3, 4, 5].map((n) => ({
     key: String(n),
     label: n === 1 ? "Mono" : `${n} colors`,
     value: byKey.get(n)?.deck_count ?? 0,
-    sublabel: pct(byKey.get(n)?.winrate, 0),
+    sublabel: pct(share(byKey.get(n)?.deck_count ?? 0, totalDecks), 0),
   }));
 }
 
@@ -115,11 +119,11 @@ export default async function CubeStatsPage({ params }: { params: { cube: string
             <section className="card">
               <h2>Color usage</h2>
               <p className="muted" style={{ marginTop: "-0.25rem" }}>
-                Decks playing each color, with its winrate. Multicolor decks count on
-                every color they play.
+                Decks playing each color, and the share of all decks that is. Multicolor
+                decks count on every color they play, so the shares sum past 100%.
               </p>
               <RadarChart
-                axes={colorAxes(colorStats)}
+                axes={colorAxes(colorStats, meta!.total_decks)}
                 caption="Decks playing each color of the WUBRG pie"
               />
             </section>
@@ -127,10 +131,11 @@ export default async function CubeStatsPage({ params }: { params: { cube: string
             <section className="card">
               <h2>Deck color count</h2>
               <p className="muted" style={{ marginTop: "-0.25rem" }}>
-                How many colors decks commit to, with each bracket&apos;s winrate.
+                How many colors decks commit to, and the share of the meta each bracket
+                holds.
               </p>
               <RadarChart
-                axes={colorCountAxes(colorStats)}
+                axes={colorCountAxes(colorStats, meta!.total_decks)}
                 caption="Decks by number of colors played, one through five"
               />
             </section>
