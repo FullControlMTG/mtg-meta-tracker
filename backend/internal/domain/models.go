@@ -26,6 +26,15 @@ const (
 	StatusArchived = "archived"
 )
 
+// Decklist archetypes.
+const (
+	ArchetypeAggro    = "aggro"
+	ArchetypeControl  = "control"
+	ArchetypeMidrange = "midrange"
+	ArchetypeTempo    = "tempo"
+	ArchetypeCombo    = "combo"
+)
+
 type User struct {
 	ID           uuid.UUID `json:"id"`
 	Username     string    `json:"username"`

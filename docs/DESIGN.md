@@ -122,7 +122,7 @@ user_id           fk           -- uploader; owner + admins get U/D
 name              text
 description       text null
 color_identity    smallint     -- inferred bitset
-archetype         text null    -- free tag (aggro/control/…)
+archetype         text null    -- enum: aggro | control | midrange | tempo | combo
 source_url        text null    -- moxfield link
 decklist_raw      text         -- raw "1 Lightning Bolt\n…" (fits varchar/text)
 card_count        int

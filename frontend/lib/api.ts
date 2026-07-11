@@ -1,6 +1,8 @@
 // Fetch helpers. Server components hit the backend origin directly; client
 // components use the same-origin /api rewrite so the session cookie is sent.
 
+import type { Archetype } from "./decklist";
+
 function base(): string {
   if (typeof window === "undefined") {
     return process.env.BACKEND_ORIGIN ?? "http://localhost:8080";
@@ -109,7 +111,7 @@ export interface Decklist {
   name: string;
   description?: string;
   color_identity: number;
-  archetype?: string;
+  archetype?: Archetype;
   source_url?: string;
   decklist_raw: string;
   card_count: number;

@@ -128,7 +128,8 @@ CREATE TABLE IF NOT EXISTS decklists (
     name              text NOT NULL,
     description       text,
     color_identity    smallint NOT NULL DEFAULT 0,       -- inferred bitset
-    archetype         text,
+    archetype         text
+                        CHECK (archetype IN ('aggro','control','midrange','tempo','combo')),
     source_url        text,
     decklist_raw      text NOT NULL,                     -- raw list text
     card_count        int  NOT NULL DEFAULT 0,
@@ -149,9 +150,10 @@ CREATE TABLE IF NOT EXISTS decklists (
     updated_at        timestamptz NOT NULL DEFAULT now(),
     CHECK (wins + losses + draws <= games_played)
 );
-CREATE INDEX IF NOT EXISTS idx_decklists_user   ON decklists(user_id);
-CREATE INDEX IF NOT EXISTS idx_decklists_cube   ON decklists(cube_id);
-CREATE INDEX IF NOT EXISTS idx_decklists_color  ON decklists(color_identity);
+CREATE INDEX IF NOT EXISTS idx_decklists_user      ON decklists(user_id);
+CREATE INDEX IF NOT EXISTS idx_decklists_cube      ON decklists(cube_id);
+CREATE INDEX IF NOT EXISTS idx_decklists_color     ON decklists(color_identity);
+CREATE INDEX IF NOT EXISTS idx_decklists_archetype ON decklists(archetype);
 
 CREATE TABLE IF NOT EXISTS decklist_cards (
     decklist_id uuid NOT NULL REFERENCES decklists(id) ON DELETE CASCADE,
@@ -304,3 +306,15 @@ CREATE TABLE IF NOT EXISTS cube_sync_progress (
     finished_at   timestamptz
 );
 ALTER TABLE cube_sync_progress ADD COLUMN IF NOT EXISTS unresolved text[] NOT NULL DEFAULT '{}';
+
+-- Archetype used to be a free-text tag. Normalize what is already there (case/whitespace,
+-- then anything still off-list to NULL) before adding the CHECK: a constraint that any row
+-- violates would fail EnsureSchema, and that runs on boot, so the server would not start.
+UPDATE decklists SET archetype = lower(btrim(archetype))
+    WHERE archetype IS NOT NULL AND archetype <> lower(btrim(archetype));
+UPDATE decklists SET archetype = NULL
+    WHERE archetype IS NOT NULL
+      AND archetype NOT IN ('aggro','control','midrange','tempo','combo');
+ALTER TABLE decklists DROP CONSTRAINT IF EXISTS decklists_archetype_check;
+ALTER TABLE decklists ADD CONSTRAINT decklists_archetype_check
+    CHECK (archetype IN ('aggro','control','midrange','tempo','combo'));

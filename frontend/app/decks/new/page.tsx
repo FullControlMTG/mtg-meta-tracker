@@ -12,6 +12,7 @@ import {
   type InferResult,
   type DecklistDetail,
 } from "@/lib/api";
+import { ARCHETYPES } from "@/lib/decklist";
 import { ColorPips } from "@/components/ColorPips";
 
 export default function NewDeckPage() {
@@ -115,12 +116,14 @@ export default function NewDeckPage() {
         <input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
 
         <label htmlFor="archetype">Archetype (optional)</label>
-        <input
-          id="archetype"
-          value={archetype}
-          onChange={(e) => setArchetype(e.target.value)}
-          placeholder="aggro, control, …"
-        />
+        <select id="archetype" value={archetype} onChange={(e) => setArchetype(e.target.value)}>
+          <option value="">— none —</option>
+          {ARCHETYPES.map((a) => (
+            <option key={a} value={a}>
+              {a}
+            </option>
+          ))}
+        </select>
 
         <label htmlFor="list">Decklist</label>
         <textarea

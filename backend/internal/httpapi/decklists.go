@@ -146,6 +146,10 @@ func (s *Server) handleCreateDecklist(w http.ResponseWriter, r *http.Request) {
 		d.Description = &req.Description
 	}
 	if req.Archetype != "" {
+		if !validArchetype(req.Archetype) {
+			writeErr(w, http.StatusBadRequest, "invalid archetype")
+			return
+		}
 		d.Archetype = &req.Archetype
 	}
 	if req.SourceURL != "" {
@@ -212,7 +216,15 @@ func (s *Server) handlePatchDecklist(w http.ResponseWriter, r *http.Request) {
 		d.Description = req.Description
 	}
 	if req.Archetype != nil {
-		d.Archetype = req.Archetype
+		switch {
+		case *req.Archetype == "": // the form's "none" option clears the tag
+			d.Archetype = nil
+		case !validArchetype(*req.Archetype):
+			writeErr(w, http.StatusBadRequest, "invalid archetype")
+			return
+		default:
+			d.Archetype = req.Archetype
+		}
 	}
 	if req.SourceURL != nil {
 		d.SourceURL = req.SourceURL
@@ -375,6 +387,15 @@ func buildRecord(gamesPlayed *int, wins, losses, draws int, placement *int, even
 
 func validStatus(s string) bool {
 	return s == domain.StatusDraft || s == domain.StatusActive || s == domain.StatusArchived
+}
+
+func validArchetype(s string) bool {
+	switch s {
+	case domain.ArchetypeAggro, domain.ArchetypeControl, domain.ArchetypeMidrange,
+		domain.ArchetypeTempo, domain.ArchetypeCombo:
+		return true
+	}
+	return false
 }
 
 func countMain(cards []domain.DecklistCard) int {

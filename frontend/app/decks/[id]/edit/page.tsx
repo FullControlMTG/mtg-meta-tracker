@@ -11,9 +11,8 @@ import {
   type PublicUser,
   type InferResult,
 } from "@/lib/api";
+import { ARCHETYPES, STATUSES } from "@/lib/decklist";
 import { ColorPips } from "@/components/ColorPips";
-
-const STATUSES = ["draft", "active", "archived"];
 
 export default function EditDeckPage({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -157,12 +156,14 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
         <input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
 
         <label htmlFor="archetype">Archetype (optional)</label>
-        <input
-          id="archetype"
-          value={archetype}
-          onChange={(e) => setArchetype(e.target.value)}
-          placeholder="aggro, control, …"
-        />
+        <select id="archetype" value={archetype} onChange={(e) => setArchetype(e.target.value)}>
+          <option value="">— none —</option>
+          {ARCHETYPES.map((a) => (
+            <option key={a} value={a}>
+              {a}
+            </option>
+          ))}
+        </select>
 
         <label htmlFor="status">Status</label>
         <select id="status" value={status} onChange={(e) => setStatus(e.target.value)}>
