@@ -78,6 +78,9 @@ export function Nav() {
             <Link href={`/users/${me.username}`} style={{ color: "var(--text)" }}>
               {me.display_name || me.username}
             </Link>
+            <Link href="/settings" style={{ color: "var(--text-secondary)" }}>
+              Settings
+            </Link>
             <button
               onClick={signOut}
               style={{

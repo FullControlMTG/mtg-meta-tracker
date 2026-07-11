@@ -29,8 +29,6 @@ type Config struct {
 	RevalidateURL    string
 	RevalidateSecret string
 
-	AppBaseURL string // frontend origin, for invite links
-
 	// First-admin bootstrap: applied only when the users table is empty.
 	BootstrapAdminUsername string
 	BootstrapAdminEmail    string
@@ -52,8 +50,6 @@ func Load() Config {
 		SyncInterval:        time.Duration(envInt("SYNC_INTERVAL_MINUTES", 360)) * time.Minute,
 		RevalidateURL:       env("REVALIDATE_URL", ""),
 		RevalidateSecret:    env("REVALIDATE_SECRET", ""),
-
-		AppBaseURL: env("APP_BASE_URL", "http://localhost:3000"),
 
 		BootstrapAdminUsername: env("BOOTSTRAP_ADMIN_USERNAME", ""),
 		BootstrapAdminEmail:    env("BOOTSTRAP_ADMIN_EMAIL", ""),

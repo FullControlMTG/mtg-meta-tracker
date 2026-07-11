@@ -34,6 +34,49 @@ func (s *Server) decklistView(r *http.Request, d *domain.Decklist) map[string]an
 	return view
 }
 
+// resolveOwner interprets a user_id sent with a deck save. An empty value means
+// "leave it alone" and yields current. Anyone may own their own decks; only an
+// admin may hand a deck to someone else. The target must exist — decklists.user_id
+// is a FK, so a bad id would otherwise surface as a 500.
+func (s *Server) resolveOwner(r *http.Request, requested string, current uuid.UUID) (uuid.UUID, error) {
+	requested = strings.TrimSpace(requested)
+	if requested == "" {
+		return current, nil
+	}
+	id, err := uuid.Parse(requested)
+	if err != nil {
+		return uuid.Nil, apiError{http.StatusBadRequest, "invalid user id"}
+	}
+	if id == current {
+		return current, nil
+	}
+	if !appctx.From(r.Context()).IsAdmin() {
+		return uuid.Nil, apiError{http.StatusForbidden, "only admins may set the deck owner"}
+	}
+	if _, err := s.store.GetUserByID(r.Context(), id); err != nil {
+		return uuid.Nil, apiError{http.StatusBadRequest, "unknown user"}
+	}
+	return id, nil
+}
+
+// revalidateOwnerChange refreshes both profile pages after a deck changes hands.
+// They are ISR (revalidate = 3600), so without this the deck lists the wrong
+// person for up to an hour.
+func (s *Server) revalidateOwnerChange(r *http.Request, from, to uuid.UUID) {
+	if from == to {
+		return
+	}
+	var paths []string
+	for _, id := range []uuid.UUID{from, to} {
+		if u, err := s.store.GetUserByID(r.Context(), id); err == nil {
+			paths = append(paths, "/users/"+u.Username)
+		}
+	}
+	if len(paths) > 0 {
+		s.revalidatePaths(paths)
+	}
+}
+
 // withUnresolved reports the names a save could not match, so a card that was
 // silently dropped is visible in the response that dropped it. Only /infer-colors
 // used to say anything, which meant an actual save could quietly lose cards.
@@ -95,7 +138,9 @@ func (s *Server) handleGetDecklist(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCreateDecklist(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		CubeID      string `json:"cube_id"`
+		CubeID string `json:"cube_id"`
+		// Owner. Empty means the caller; only an admin may name someone else.
+		UserID      string `json:"user_id"`
 		Name        string `json:"name"`
 		Description string `json:"description"`
 		Archetype   string `json:"archetype"`
@@ -143,9 +188,14 @@ func (s *Server) handleCreateDecklist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	caller := appctx.From(r.Context())
+	ownerID, err := s.resolveOwner(r, req.UserID, caller.UserID)
+	if err != nil {
+		writeAPIErr(w, err)
+		return
+	}
 	d := &domain.Decklist{
 		CubeID:        cubeID,
-		UserID:        caller.UserID,
+		UserID:        ownerID,
 		Name:          req.Name,
 		ColorIdentity: resolved.ColorIdentity,
 		DecklistRaw:   req.DecklistRaw,
@@ -208,6 +258,8 @@ func (s *Server) handlePatchDecklist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
+		// Reassigns the deck. Admin-only; see resolveOwner.
+		UserID      *string `json:"user_id"`
 		Name        *string `json:"name"`
 		Description *string `json:"description"`
 		Archetype   *string `json:"archetype"`
@@ -218,6 +270,15 @@ func (s *Server) handlePatchDecklist(w http.ResponseWriter, r *http.Request) {
 	if err := decodeJSON(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
+	}
+	prevOwner := d.UserID
+	if req.UserID != nil {
+		owner, err := s.resolveOwner(r, *req.UserID, d.UserID)
+		if err != nil {
+			writeAPIErr(w, err)
+			return
+		}
+		d.UserID = owner
 	}
 	if req.Name != nil {
 		d.Name = strings.TrimSpace(*req.Name)
@@ -271,6 +332,7 @@ func (s *Server) handlePatchDecklist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.enqueueRecompute(r, d.CubeID, "deck_updated")
+	s.revalidateOwnerChange(r, prevOwner, d.UserID)
 	writeJSON(w, http.StatusOK, withUnresolved(s.decklistView(r, d), unresolved))
 }
 

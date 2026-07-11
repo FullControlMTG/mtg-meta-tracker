@@ -195,10 +195,10 @@ func (s *Store) UpdateDecklist(ctx context.Context, d *domain.Decklist, cards []
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	ct, err := tx.Exec(ctx, `
-		UPDATE decklists SET name=$2, description=$3, color_identity=$4, archetype=$5,
-			source_url=$6, decklist_raw=$7, card_count=$8, status=$9, updated_at=now()
+		UPDATE decklists SET user_id=$2, name=$3, description=$4, color_identity=$5, archetype=$6,
+			source_url=$7, decklist_raw=$8, card_count=$9, status=$10, updated_at=now()
 		WHERE id=$1`,
-		d.ID, d.Name, d.Description, d.ColorIdentity, d.Archetype,
+		d.ID, d.UserID, d.Name, d.Description, d.ColorIdentity, d.Archetype,
 		d.SourceURL, d.DecklistRaw, d.CardCount, d.Status)
 	if err != nil {
 		return err

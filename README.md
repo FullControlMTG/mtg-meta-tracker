@@ -10,7 +10,7 @@ the best in your favorite format's metagame.
 - **Frontend** — Next.js (App Router): static/ISR decklist pages, interactive
   analytics dashboards
 - **Data** — cube pool from a pasted decklist, card data + images from Scryfall
-- **Auth** — email/password, server sessions; onboarding is admin-invite-only
+- **Auth** — username/password, server sessions; accounts are created by an admin
 
 ## Docs
 
@@ -47,9 +47,10 @@ and is not usable for local dev — `make db-up` uses `docker-compose.dev.yml` i
 
 ## Auth
 
-Email/password only, with **no public signup**: the first admin comes from the
-`BOOTSTRAP_ADMIN_*` env vars above, and everyone else joins via an admin-issued
-invite (`POST /api/admin/invites`).
+Username/password only, with **no public signup**: the first admin comes from the
+`BOOTSTRAP_ADMIN_*` env vars above, and creates everyone else from `/admin/users`
+(`POST /api/admin/users`), handing over an initial password. Users change their own
+password under `/settings`; an admin can reset anyone's without knowing the old one.
 
 ## Database
 

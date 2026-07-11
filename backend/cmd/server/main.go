@@ -121,7 +121,7 @@ func main() {
 }
 
 func bootstrapAdmin(ctx context.Context, st *store.Store, cfg config.Config) error {
-	if cfg.BootstrapAdminUsername == "" || cfg.BootstrapAdminEmail == "" || cfg.BootstrapAdminPassword == "" {
+	if cfg.BootstrapAdminUsername == "" || cfg.BootstrapAdminPassword == "" {
 		return nil
 	}
 	n, err := st.CountUsers(ctx)
@@ -134,10 +134,12 @@ func bootstrapAdmin(ctx context.Context, st *store.Store, cfg config.Config) err
 	}
 	u := &domain.User{
 		Username:     cfg.BootstrapAdminUsername,
-		Email:        cfg.BootstrapAdminEmail,
 		DisplayName:  cfg.BootstrapAdminUsername,
 		Role:         domain.RoleAdmin,
 		PasswordHash: &hash,
+	}
+	if cfg.BootstrapAdminEmail != "" {
+		u.Email = &cfg.BootstrapAdminEmail
 	}
 	if err := st.CreateUser(ctx, u); err != nil {
 		return err

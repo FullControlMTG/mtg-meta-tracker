@@ -60,7 +60,7 @@ export default function LoginPage() {
         </button>
       </form>
       <p className="muted" style={{ marginTop: "1rem", fontSize: "0.85rem" }}>
-        Accounts are invite-only. Ask an admin for an invite link.
+        There is no sign-up. Ask an admin to create an account for you.
       </p>
     </main>
   );

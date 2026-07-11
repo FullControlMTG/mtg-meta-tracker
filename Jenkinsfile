@@ -37,8 +37,6 @@ pipeline {
         SESSION_TTL_HOURS        = '720'
         SCRYFALL_USER_AGENT      = 'mtg-meta-tracker/0.1 (contact: admin@fullcontrolmtg.com)'
         SCRYFALL_MIN_INTERVAL_MS = '100'
-        // Public origin of the deployment.
-        APP_BASE_URL             = 'https://cube.fullcontrolmtg.com'
         GOOGLE_REDIRECT_URL      = 'https://cube.fullcontrolmtg.com/api/auth/google/callback'
         // Internal backend->frontend revalidation call, via the compose service DNS name.
         REVALIDATE_URL           = 'http://frontend:3000/api/revalidate'
@@ -131,7 +129,6 @@ GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
 GOOGLE_REDIRECT_URL=${GOOGLE_REDIRECT_URL}
 SCRYFALL_USER_AGENT=${SCRYFALL_USER_AGENT}
 SCRYFALL_MIN_INTERVAL_MS=${SCRYFALL_MIN_INTERVAL_MS}
-APP_BASE_URL=${APP_BASE_URL}
 REVALIDATE_URL=${REVALIDATE_URL}
 REVALIDATE_SECRET=${REVALIDATE_SECRET}
 BOOTSTRAP_ADMIN_USERNAME=${BOOTSTRAP_ADMIN_USERNAME}

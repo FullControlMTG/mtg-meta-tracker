@@ -38,7 +38,7 @@ const (
 type User struct {
 	ID           uuid.UUID `json:"id"`
 	Username     string    `json:"username"`
-	Email        string    `json:"email"`
+	Email        *string   `json:"email,omitempty"`
 	DisplayName  string    `json:"display_name"`
 	Bio          *string   `json:"bio,omitempty"`
 	AvatarURL    *string   `json:"avatar_url,omitempty"`
@@ -66,17 +66,6 @@ type Session struct {
 	UserID    uuid.UUID `json:"user_id"`
 	ExpiresAt time.Time `json:"expires_at"`
 	CreatedAt time.Time `json:"created_at"`
-}
-
-type Invite struct {
-	ID         uuid.UUID  `json:"id"`
-	Email      string     `json:"email"`
-	Role       string     `json:"role"`
-	TokenHash  string     `json:"-"`
-	InvitedBy  *uuid.UUID `json:"invited_by,omitempty"`
-	ExpiresAt  time.Time  `json:"expires_at"`
-	AcceptedAt *time.Time `json:"accepted_at,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
 }
 
 type Cube struct {

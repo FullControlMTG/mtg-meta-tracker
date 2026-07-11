@@ -74,6 +74,18 @@ func (s *Store) UpdateUserProfile(ctx context.Context, u *domain.User) error {
 	return nil
 }
 
+func (s *Store) UpdateUserPassword(ctx context.Context, id uuid.UUID, hash string) error {
+	ct, err := s.pool.Exec(ctx, `
+		UPDATE users SET password_hash=$2, updated_at=now() WHERE id=$1`, id, hash)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *Store) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	ct, err := s.pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, id)
 	if err != nil {

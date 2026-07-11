@@ -27,6 +27,9 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
   const [status, setStatus] = useState("active");
   const [raw, setRaw] = useState("");
   const [cubeId, setCubeId] = useState("");
+  // Owner. Admins may reassign a deck; everyone else sees no picker.
+  const [users, setUsers] = useState<PublicUser[]>([]);
+  const [userId, setUserId] = useState("");
   const [infer, setInfer] = useState<InferResult | null>(null);
   const [deckErr, setDeckErr] = useState<string | null>(null);
   const [deckBusy, setDeckBusy] = useState(false);
@@ -41,7 +44,12 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
   const [recMsg, setRecMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    apiGetOptional<PublicUser>("/auth/me").then(setMe);
+    apiGetOptional<PublicUser>("/auth/me").then((u) => {
+      setMe(u);
+      if (u?.role === "admin") {
+        apiGetOptional<PublicUser[]>("/users").then((us) => setUsers(us ?? []));
+      }
+    });
     apiGetOptional<DecklistDetail>(`/decklists/${id}`).then((dd) => {
       setDetail(dd);
       if (dd) {
@@ -51,6 +59,7 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
         setStatus(d.status);
         setRaw(d.decklist_raw);
         setCubeId(d.cube_id);
+        setUserId(d.user_id);
         if (d.games_played > 0 || d.wins || d.losses) {
           setWins(String(d.wins));
           setLosses(String(d.losses));
@@ -80,12 +89,16 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
     setDeckErr(null);
     setDeckMsg(null);
     try {
-      await apiPatch<DecklistDetail>(`/decklists/${id}`, {
+      const body: Record<string, unknown> = {
         name,
         archetype,
         status,
         decklist_raw: raw,
-      });
+      };
+      // Only admins may reassign; sending our own id back would be a no-op anyway.
+      if (me?.role === "admin" && userId) body.user_id = userId;
+      const saved = await apiPatch<DecklistDetail>(`/decklists/${id}`, body);
+      setDetail(saved);
       setDeckMsg("Saved.");
       router.refresh();
     } catch (e) {
@@ -125,7 +138,8 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
       </main>
     );
   }
-  if (!me || me.id !== detail.decklist.user_id) {
+  // Mirrors the backend's CanMutateOwned: the owner, or any admin.
+  if (!me || (me.id !== detail.decklist.user_id && me.role !== "admin")) {
     return (
       <main className="container">
         <h1>Edit deck</h1>
@@ -143,6 +157,19 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
 
       <form onSubmit={saveDeck} className="card">
         <h2 style={{ marginTop: 0 }}>Deck</h2>
+
+        {me.role === "admin" && (
+          <>
+            <label htmlFor="owner">Owner</label>
+            <select id="owner" value={userId} onChange={(e) => setUserId(e.target.value)} required>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.display_name} (@{u.username})
+                </option>
+              ))}
+            </select>
+          </>
+        )}
 
         <label htmlFor="name">Deck name</label>
         <input id="name" value={name} onChange={(e) => setName(e.target.value)} required />

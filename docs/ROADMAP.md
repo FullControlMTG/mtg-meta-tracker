@@ -10,9 +10,9 @@ Phased build. Each phase is independently runnable/verifiable.
 - [x] Next.js app skeleton + `/api` rewrite
 
 ### Phase 1 — Backend core + auth
-- [x] `store` repositories (pgx) for users/sessions/invites/cubes/cards/jobs
+- [x] `store` repositories (pgx) for users/sessions/cubes/cards/jobs
 - [x] Sessions + password auth (argon2id) + `appctx` middleware
-- [x] Admin-invites-only onboarding (invite → accept-invite) + first-admin bootstrap
+- [x] Admin-created accounts (no public signup) + first-admin bootstrap
 - [x] User CRUD endpoints with role/ownership checks
 - [ ] Google OAuth (OIDC) → unified session
 - [ ] Decklist repositories (deferred to Phase 3)
@@ -38,7 +38,7 @@ Phased build. Each phase is independently runnable/verifiable.
 - [x] Analytics dashboard (charts via `dataviz`)
 - [x] Decklist detail (overlaid card fan) with ISR
 - [x] User pages, deck creation page with live inference
-- [x] Auth pages (login; invite-accept page still deferred)
+- [x] Auth pages (login, settings/change-password, admin user management)
 
 ### Phase 6 — Polish
 - [ ] Scheduled cube sync + card refresh jobs

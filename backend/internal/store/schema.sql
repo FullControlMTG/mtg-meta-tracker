@@ -18,10 +18,12 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";  -- gen_random_uuid()
 -- ---------------------------------------------------------------------------
 -- Users, auth
 -- ---------------------------------------------------------------------------
+-- Username is the identity. Email is optional metadata: an admin creates accounts
+-- directly with a username + password, and may not have an address to hand.
 CREATE TABLE IF NOT EXISTS users (
     id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     username      text NOT NULL UNIQUE,
-    email         text NOT NULL UNIQUE,
+    email         text UNIQUE,              -- UNIQUE permits many NULLs in Postgres
     display_name  text NOT NULL,
     bio           text,
     avatar_url    text,
@@ -47,20 +49,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
-
--- Admin-invites-only onboarding: no open registration. An admin creates an
--- invite; the invitee redeems the token to set username + password.
-CREATE TABLE IF NOT EXISTS invites (
-    id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    email      text NOT NULL,
-    role       text NOT NULL DEFAULT 'user' CHECK (role IN ('user','admin')),
-    token_hash text NOT NULL UNIQUE,               -- sha256 of the raw token
-    invited_by uuid REFERENCES users(id) ON DELETE SET NULL,
-    expires_at timestamptz NOT NULL,
-    accepted_at timestamptz,
-    created_at timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_invites_open ON invites(lower(email)) WHERE accepted_at IS NULL;
 
 -- ---------------------------------------------------------------------------
 -- Cube (card pool) + Scryfall card cache
@@ -325,3 +313,10 @@ ALTER TABLE decklists   ADD  CONSTRAINT decklists_record_check
 ALTER TABLE color_stats DROP COLUMN IF EXISTS draws;
 ALTER TABLE color_stats DROP COLUMN IF EXISTS avg_placement;
 ALTER TABLE card_stats  DROP COLUMN IF EXISTS draws;
+
+-- Onboarding is now "an admin creates the account with a username + password"; the
+-- invite flow it replaces is gone. Email came along for the ride: it is no longer
+-- required, so blank it out rather than let '' collide with itself under UNIQUE.
+ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
+UPDATE users SET email = NULL WHERE btrim(email) = '';
+DROP TABLE IF EXISTS invites;

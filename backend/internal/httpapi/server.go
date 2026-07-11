@@ -44,11 +44,11 @@ func (s *Server) Router() http.Handler {
 		r.Post("/auth/login", s.handleLogin)
 		r.Post("/auth/logout", s.handleLogout)
 		r.Get("/auth/me", s.handleMe)
-		r.Post("/auth/accept-invite", s.handleAcceptInvite)
 
 		r.Get("/users", s.handleListUsers)
 		r.Get("/users/{username}", s.handleGetUser)
 		r.With(s.requireAuth).Patch("/users/{id}", s.handlePatchUser)
+		r.With(s.requireAuth).Post("/users/{id}/password", s.handleSetPassword)
 		r.With(s.requireAdmin).Delete("/users/{id}", s.handleDeleteUser)
 
 		r.Get("/cubes", s.handleListCubes)
@@ -73,9 +73,7 @@ func (s *Server) Router() http.Handler {
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireAdmin)
-			r.Post("/admin/invites", s.handleCreateInvite)
-			r.Get("/admin/invites", s.handleListInvites)
-			r.Delete("/admin/invites/{id}", s.handleDeleteInvite)
+			r.Post("/admin/users", s.handleCreateUser)
 
 			r.Post("/admin/cubes", s.handleCreateCube)
 			r.Patch("/admin/cubes/{id}", s.handlePatchCube)
@@ -108,6 +106,25 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeErr(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// apiError carries the response a failed helper wants written, so validation
+// shared by several handlers can report its own status instead of collapsing to
+// a single one at the call site. Write it with writeAPIErr.
+type apiError struct {
+	status int
+	msg    string
+}
+
+func (e apiError) Error() string { return e.msg }
+
+func writeAPIErr(w http.ResponseWriter, err error) {
+	var ae apiError
+	if errors.As(err, &ae) {
+		writeErr(w, ae.status, ae.msg)
+		return
+	}
+	writeErr(w, http.StatusInternalServerError, "internal error")
 }
 
 func decodeJSON(r *http.Request, dst any) error {

@@ -20,6 +20,10 @@ export default function NewDeckPage() {
   const [me, setMe] = useState<PublicUser | null | undefined>(undefined);
   const [cubes, setCubes] = useState<CubeView[]>([]);
   const [cubeId, setCubeId] = useState("");
+  // Owner. Admins may upload on someone else's behalf; everyone else is pinned
+  // to themselves, so the list stays empty and no picker renders.
+  const [users, setUsers] = useState<PublicUser[]>([]);
+  const [userId, setUserId] = useState("");
   const [name, setName] = useState("");
   const [archetype, setArchetype] = useState("");
   const [raw, setRaw] = useState("");
@@ -32,7 +36,14 @@ export default function NewDeckPage() {
   const timer = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
-    apiGetOptional<PublicUser>("/auth/me").then((u) => setMe(u));
+    apiGetOptional<PublicUser>("/auth/me").then((u) => {
+      setMe(u);
+      if (!u) return;
+      setUserId(u.id);
+      if (u.role === "admin") {
+        apiGetOptional<PublicUser[]>("/users").then((us) => setUsers(us ?? []));
+      }
+    });
     apiGet<CubeView[]>("/cubes")
       .then((cs) => {
         setCubes(cs);
@@ -67,6 +78,8 @@ export default function NewDeckPage() {
         archetype,
         decklist_raw: raw,
       };
+      // Only admins may name an owner; the backend defaults it to the caller.
+      if (me?.role === "admin" && userId) body.user_id = userId;
       const w = parseInt(wins, 10) || 0;
       const l = parseInt(losses, 10) || 0;
       if (w || l) {
@@ -105,6 +118,19 @@ export default function NewDeckPage() {
             </option>
           ))}
         </select>
+
+        {me.role === "admin" && (
+          <>
+            <label htmlFor="owner">Owner</label>
+            <select id="owner" value={userId} onChange={(e) => setUserId(e.target.value)} required>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.display_name} (@{u.username})
+                </option>
+              ))}
+            </select>
+          </>
+        )}
 
         <label htmlFor="name">Deck name</label>
         <input id="name" value={name} onChange={(e) => setName(e.target.value)} required />

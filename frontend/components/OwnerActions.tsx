@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useSession } from "@/components/SessionProvider";
 
-// Renders owner-only edit affordances on the (server-rendered) deck detail page.
-// Gates client-side by comparing the session user against the deck owner.
+// Renders edit affordances on the (server-rendered) deck detail page for whoever
+// may mutate the deck. Gates client-side on owner-or-admin, mirroring the
+// backend's CanMutateOwned.
 export function OwnerActions({
   deckId,
   ownerId,
@@ -16,7 +17,7 @@ export function OwnerActions({
 }) {
   const { me } = useSession();
 
-  if (!me || me.id !== ownerId) return null;
+  if (!me || (me.id !== ownerId && me.role !== "admin")) return null;
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "1rem", margin: "0.5rem 0 0.25rem" }}>
