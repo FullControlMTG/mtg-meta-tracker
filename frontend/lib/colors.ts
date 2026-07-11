@@ -45,6 +45,66 @@ export interface CardGroup<T> {
 
 const popcount = (n: number) => n.toString(2).replace(/0/g, "").length;
 
+const LAND_RE = /\bland\b/i;
+
+// --- display order ---
+
+// The one shared sort for both the cube pool and a deck's boards: color, then
+// converted mana cost, then name.
+export interface SortableCard {
+  card_name: string;
+  cmc?: number;
+  type_line?: string;
+  // Optional because an unresolved deck card has no `cards` row to join to.
+  color_identity?: number;
+}
+
+// Rank of a card's color section, matching groupCubeCards' section order:
+// mono W,U,B,R,G → Multicolor → Colorless → Lands.
+const MULTICOLOR_RANK = COLORS.length; // 5
+const COLORLESS_RANK = MULTICOLOR_RANK + 1;
+const LAND_RANK = COLORLESS_RANK + 1;
+
+function sectionRank(card: SortableCard): number {
+  if (card.type_line && LAND_RE.test(card.type_line)) return LAND_RANK;
+  const bits = card.color_identity ?? 0;
+  if (bits === 0) return COLORLESS_RANK;
+  if (popcount(bits) > 1) return MULTICOLOR_RANK;
+  return COLORS.findIndex((c) => c.bit === bits);
+}
+
+// Order two color identities: fewer colors first (pairs, then shards/wedges, then
+// four-color, then five), and within a count, in WUBRG order — so the guilds come
+// out WU, WB, WR, WG, UB, ... rather than interleaved. Identical within a mono or
+// colorless section, where every card shares one identity.
+function compareIdentity(a: number, b: number): number {
+  if (a === b) return 0;
+  const byCount = popcount(a) - popcount(b);
+  if (byCount !== 0) return byCount;
+  for (const { bit } of COLORS) {
+    const hasA = (a & bit) !== 0;
+    const hasB = (b & bit) !== 0;
+    if (hasA !== hasB) return hasA ? -1 : 1;
+  }
+  return 0;
+}
+
+export function compareCards(a: SortableCard, b: SortableCard): number {
+  const bySection = sectionRank(a) - sectionRank(b);
+  if (bySection !== 0) return bySection;
+  const byIdentity = compareIdentity(a.color_identity ?? 0, b.color_identity ?? 0);
+  if (byIdentity !== 0) return byIdentity;
+  // A card with no cached cmc (only ever an unresolved deck entry) curves as a 0.
+  const byCMC = (a.cmc ?? 0) - (b.cmc ?? 0);
+  if (byCMC !== 0) return byCMC;
+  return a.card_name.localeCompare(b.card_name, undefined, { sensitivity: "base" });
+}
+
+// Copies — the caller's array (a server-fetched payload) is not ours to mutate.
+export function sortCards<T extends SortableCard>(cards: T[]): T[] {
+  return [...cards].sort(compareCards);
+}
+
 // Bucket cube cards into color sections for display: Lands first (anything whose
 // type line is a land, regardless of color identity), then mono W/U/B/R/G, then
 // Multicolor (>1 color), then Colorless (0 colors, non-land). Empty sections drop.

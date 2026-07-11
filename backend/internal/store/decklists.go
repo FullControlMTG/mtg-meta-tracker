@@ -123,12 +123,15 @@ type DecklistCardView struct {
 	ImageNormal  *string  `json:"image_normal,omitempty"`
 	CMC          *float64 `json:"cmc,omitempty"`
 	TypeLine     *string  `json:"type_line,omitempty"`
+	// Nil for an unresolved card, like every other joined field here. The deck
+	// page sorts on it (color → cmc → name), so it has to cross the wire.
+	ColorIdentity *int `json:"color_identity,omitempty"`
 }
 
 func (s *Store) GetDecklistCardsView(ctx context.Context, decklistID uuid.UUID) ([]DecklistCardView, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT dc.decklist_id, dc.card_id, dc.card_name, dc.quantity, dc.is_resolved, dc.board,
-			c.slug, c.image_art_crop, c.image_normal, c.cmc, c.type_line
+			c.slug, c.image_art_crop, c.image_normal, c.cmc, c.type_line, c.color_identity
 		FROM decklist_cards dc
 		LEFT JOIN cards c ON c.scryfall_id = dc.card_id
 		WHERE dc.decklist_id=$1 ORDER BY dc.board, dc.card_name`, decklistID)
@@ -140,7 +143,7 @@ func (s *Store) GetDecklistCardsView(ctx context.Context, decklistID uuid.UUID) 
 	for rows.Next() {
 		var v DecklistCardView
 		if err := rows.Scan(&v.DecklistID, &v.CardID, &v.CardName, &v.Quantity, &v.IsResolved, &v.Board,
-			&v.Slug, &v.ImageArtCrop, &v.ImageNormal, &v.CMC, &v.TypeLine); err != nil {
+			&v.Slug, &v.ImageArtCrop, &v.ImageNormal, &v.CMC, &v.TypeLine, &v.ColorIdentity); err != nil {
 			return nil, err
 		}
 		out = append(out, v)

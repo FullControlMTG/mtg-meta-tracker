@@ -5,6 +5,7 @@ import { ColorPips } from "@/components/ColorPips";
 import { CardFan } from "@/components/CardFan";
 import { StatTile } from "@/components/StatTile";
 import { OwnerActions } from "@/components/OwnerActions";
+import { sortCards } from "@/lib/colors";
 import { pct } from "@/lib/format";
 
 export const revalidate = 3600;
@@ -29,9 +30,11 @@ export default async function DecklistDetailPage({ params }: { params: { id: str
   if (!detail) notFound();
 
   const { decklist: d, cards, user } = detail;
+  // Each board reads in the cube's display order (color → cmc → name) rather than
+  // the backend's flat alphabetical one.
   const sections = BOARDS.map((b) => ({
     ...b,
-    cards: cards.filter((c) => c.board === b.key),
+    cards: sortCards(cards.filter((c) => c.board === b.key)),
   })).filter((s) => s.cards.length > 0);
   // CardFan drops unresolved cards, so with the text list gone this warning is the
   // only trace of a card that is in the deck but not on the page. Name the names.

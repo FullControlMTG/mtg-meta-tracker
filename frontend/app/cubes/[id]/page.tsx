@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { apiGetOptional, type CubeView, type CubeCard } from "@/lib/api";
 import { CardFan } from "@/components/CardFan";
-import { groupCubeCards } from "@/lib/colors";
+import { groupCubeCards, sortCards } from "@/lib/colors";
 
 export const revalidate = 300;
 
@@ -19,7 +19,8 @@ export default async function CubeDetailPage({ params }: { params: { id: string 
   if (!view) notFound();
 
   const cards = (await apiGetOptional<CubeCard[]>(`/cubes/${params.id}/cards`, 300)) ?? [];
-  const groups = groupCubeCards(cards);
+  // Sort first, then bucket: groupCubeCards preserves input order within a section.
+  const groups = groupCubeCards(sortCards(cards));
   const { cube } = view;
 
   return (

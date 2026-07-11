@@ -136,6 +136,7 @@ export interface DecklistCard {
   image_normal?: string;
   cmc?: number;
   type_line?: string;
+  color_identity?: number;
 }
 export interface PublicUser {
   id: string;
