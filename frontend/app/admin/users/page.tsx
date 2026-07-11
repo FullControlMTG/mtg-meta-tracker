@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiGetNoStore, apiPost, apiPatch, apiDelete, type PublicUser } from "@/lib/api";
 import { useSession } from "@/components/SessionProvider";
+import { PasswordInput } from "@/components/PasswordInput";
 
 const ROLES = ["user", "admin"] as const;
 
@@ -119,17 +120,15 @@ export default function AdminUsersPage() {
         <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
 
         <label htmlFor="password">Password</label>
-        <input
+        <PasswordInput
           id="password"
-          type="text"
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoComplete="off"
+          onChange={setPassword}
           minLength={8}
           required
         />
         <p className="muted" style={{ margin: "0.25rem 0 0", fontSize: "0.8rem" }}>
-          At least 8 characters. Shown in the clear so you can hand it over; they can change it later.
+          At least 8 characters. Reveal it to hand it over; they can change it later.
         </p>
 
         <label htmlFor="role">Role</label>
@@ -258,12 +257,10 @@ function ResetPassword({
 
   return (
     <form onSubmit={submit} style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-      <input
-        type="text"
+      <PasswordInput
         value={password}
-        onChange={(e) => setPassword(e.target.value)}
+        onChange={setPassword}
         placeholder="New password"
-        autoComplete="off"
         minLength={8}
         required
         style={{ width: 220 }}
