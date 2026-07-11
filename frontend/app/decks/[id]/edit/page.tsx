@@ -7,6 +7,7 @@ import {
   apiGetOptional,
   apiPost,
   apiPatch,
+  apiDelete,
   type DecklistDetail,
   type PublicUser,
   type InferResult,
@@ -42,6 +43,10 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
   const [recErr, setRecErr] = useState<string | null>(null);
   const [recBusy, setRecBusy] = useState(false);
   const [recMsg, setRecMsg] = useState<string | null>(null);
+
+  // Delete.
+  const [delErr, setDelErr] = useState<string | null>(null);
+  const [delBusy, setDelBusy] = useState(false);
 
   useEffect(() => {
     apiGetOptional<PublicUser>("/auth/me").then((u) => {
@@ -126,6 +131,25 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
       setRecErr(String(e instanceof Error ? e.message : e));
     } finally {
       setRecBusy(false);
+    }
+  }
+
+  async function deleteDeck() {
+    const deckName = detail?.decklist.name ?? "this deck";
+    if (
+      !window.confirm(`Delete "${deckName}"? Its record and card list go with it. This cannot be undone.`)
+    ) {
+      return;
+    }
+    setDelBusy(true);
+    setDelErr(null);
+    try {
+      await apiDelete(`/decklists/${id}`);
+      // The deck page we came from is gone; sending them back would 404.
+      router.push("/decks");
+    } catch (e) {
+      setDelErr(String(e instanceof Error ? e.message : e));
+      setDelBusy(false);
     }
   }
 
@@ -245,6 +269,26 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
           {recBusy ? "Saving…" : "Save record"}
         </button>
       </form>
+
+      <div className="card">
+        <h2 style={{ marginTop: 0 }}>Danger zone</h2>
+        <p className="muted" style={{ marginTop: 0, fontSize: "0.85rem" }}>
+          Deleting removes the deck, its card list, and its win/loss record for good. To take
+          it out of circulation without losing it, set its status to archived instead.
+        </p>
+
+        {delErr && <p style={{ color: "var(--bad)", marginTop: "0.75rem" }}>{delErr}</p>}
+
+        <button
+          type="button"
+          className="button"
+          onClick={deleteDeck}
+          disabled={delBusy}
+          style={{ marginTop: "1rem", background: "var(--bad, #b00)", color: "#fff" }}
+        >
+          {delBusy ? "Deleting…" : "Delete deck"}
+        </button>
+      </div>
     </main>
   );
 }

@@ -396,6 +396,14 @@ func (s *Server) handleDeleteDecklist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.enqueueRecompute(r, d.CubeID, "deck_updated")
+	// The recompute's own revalidation derives its paths from the cube's decklists,
+	// which no longer include this one, so the deck's page and its owner's profile
+	// (both ISR, revalidate = 3600) would keep serving the deleted deck for an hour.
+	paths := []string{"/decks/" + id.String()}
+	if u, err := s.store.GetUserByID(r.Context(), d.UserID); err == nil {
+		paths = append(paths, "/users/"+u.Username)
+	}
+	s.revalidatePaths(paths)
 	w.WriteHeader(http.StatusNoContent)
 }
 
