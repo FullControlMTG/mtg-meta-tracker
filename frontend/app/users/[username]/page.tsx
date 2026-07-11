@@ -40,7 +40,7 @@ export default async function UserPage({ params }: { params: { username: string 
               {decks.map(({ decklist: d }) => (
                 <tr key={d.id}>
                   <td>
-                    <Link href={`/decklists/${d.id}`}>{d.name}</Link>
+                    <Link href={`/decks/${d.id}`}>{d.name}</Link>
                   </td>
                   <td>
                     <ColorPips bits={d.color_identity} showCode />

@@ -79,7 +79,7 @@ export default function NewDeckPage() {
         if (!isNaN(p)) body.placement = p;
       }
       const detail = await apiPost<DecklistDetail>("/decklists", body);
-      router.push(`/decklists/${detail.decklist.id}`);
+      router.push(`/decks/${detail.decklist.id}`);
     } catch (e) {
       setErr(String(e instanceof Error ? e.message : e));
       setBusy(false);

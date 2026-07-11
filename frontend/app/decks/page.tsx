@@ -36,7 +36,7 @@ export default async function DecklistsPage() {
               {decks.map(({ decklist: d }) => (
                 <tr key={d.id}>
                   <td>
-                    <Link href={`/decklists/${d.id}`}>{d.name}</Link>
+                    <Link href={`/decks/${d.id}`}>{d.name}</Link>
                     {d.archetype && (
                       <span className="muted" style={{ marginLeft: 6, fontSize: "0.85rem" }}>
                         {d.archetype}

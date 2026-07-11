@@ -143,6 +143,51 @@ func TestAggregateColorFacets(t *testing.T) {
 	}
 }
 
+func typeLine(v string) *string { return &v }
+
+// A realistic deck is mostly basics by copy count. They must not reach the card
+// breakdown (every deck plays Island, so it would top inclusion and co-occur with
+// everything), and no land may drag the mana-value average.
+func TestAggregateExcludesBasicsAndLands(t *testing.T) {
+	deck := uuid.New()
+	island, wasteland, bolt, jace := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+
+	decks := []model.DeckRow{{ID: deck, ColorIdent: 2, Games: 2, Wins: 1, Losses: 1}}
+	cards := []model.DeckCardRow{
+		{DecklistID: deck, CardID: island, Quantity: 17, CMC: cmc(0), TypeLine: typeLine("Basic Land — Island")},
+		{DecklistID: deck, CardID: wasteland, Quantity: 1, CMC: cmc(0), TypeLine: typeLine("Land")},
+		{DecklistID: deck, CardID: bolt, Quantity: 1, CMC: cmc(1), TypeLine: typeLine("Instant")},
+		{DecklistID: deck, CardID: jace, Quantity: 1, CMC: cmc(4), TypeLine: typeLine("Legendary Planeswalker — Jace")},
+	}
+	r := aggregate(decks, cards)
+
+	byCard := map[uuid.UUID]model.CardStatRow{}
+	for _, c := range r.CardStats {
+		byCard[c.CardID] = c
+	}
+	if _, ok := byCard[island]; ok {
+		t.Error("basic land must not appear in card_stats")
+	}
+	// A nonbasic land is a real card choice — it stays in the breakdown.
+	if _, ok := byCard[wasteland]; !ok {
+		t.Error("nonbasic land should appear in card_stats")
+	}
+	if len(byCard) != 3 {
+		t.Errorf("card_stats has %d cards, want 3 (all but the basic)", len(byCard))
+	}
+	for _, p := range r.PairStats {
+		if p.CardA == island || p.CardB == island {
+			t.Error("basic land must not appear in card_pair_stats")
+		}
+	}
+
+	// Mana value averages the two nonlands only: (1 + 4) / 2 = 2.5. Counting the 18
+	// lands at MV 0 would give 5/20 = 0.25.
+	if r.Meta.AvgCMC == nil || math.Abs(*r.Meta.AvgCMC-2.5) > 1e-9 {
+		t.Fatalf("avg_cmc = %v, want 2.5 (nonlands only)", r.Meta.AvgCMC)
+	}
+}
+
 func TestAggregateEmpty(t *testing.T) {
 	r := aggregate(nil, nil)
 	if r.DecksIncluded != 0 || r.Meta.OverallWinrate != nil {

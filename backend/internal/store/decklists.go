@@ -115,8 +115,10 @@ func (s *Store) ListDecklists(ctx context.Context, f DecklistFilter) ([]domain.D
 }
 
 // DecklistCardView enriches a deck card with cached Scryfall fields for display.
+// Slug is empty for an unresolved card (there is no `cards` row to link to).
 type DecklistCardView struct {
 	domain.DecklistCard
+	Slug         *string  `json:"slug,omitempty"`
 	ImageArtCrop *string  `json:"image_art_crop,omitempty"`
 	ImageNormal  *string  `json:"image_normal,omitempty"`
 	CMC          *float64 `json:"cmc,omitempty"`
@@ -126,7 +128,7 @@ type DecklistCardView struct {
 func (s *Store) GetDecklistCardsView(ctx context.Context, decklistID uuid.UUID) ([]DecklistCardView, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT dc.decklist_id, dc.card_id, dc.card_name, dc.quantity, dc.is_resolved, dc.board,
-			c.image_art_crop, c.image_normal, c.cmc, c.type_line
+			c.slug, c.image_art_crop, c.image_normal, c.cmc, c.type_line
 		FROM decklist_cards dc
 		LEFT JOIN cards c ON c.scryfall_id = dc.card_id
 		WHERE dc.decklist_id=$1 ORDER BY dc.board, dc.card_name`, decklistID)
@@ -134,11 +136,11 @@ func (s *Store) GetDecklistCardsView(ctx context.Context, decklistID uuid.UUID) 
 		return nil, err
 	}
 	defer rows.Close()
-	var out []DecklistCardView
+	out := []DecklistCardView{}
 	for rows.Next() {
 		var v DecklistCardView
 		if err := rows.Scan(&v.DecklistID, &v.CardID, &v.CardName, &v.Quantity, &v.IsResolved, &v.Board,
-			&v.ImageArtCrop, &v.ImageNormal, &v.CMC, &v.TypeLine); err != nil {
+			&v.Slug, &v.ImageArtCrop, &v.ImageNormal, &v.CMC, &v.TypeLine); err != nil {
 			return nil, err
 		}
 		out = append(out, v)

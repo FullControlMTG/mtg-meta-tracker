@@ -4,12 +4,24 @@ import (
 	"bytes"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/analytics/model"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
 )
+
+// Scryfall type lines: "Land — Island", "Basic Land — Forest", "Basic Snow Land — Forest".
+func isLand(typeLine *string) bool {
+	return typeLine != nil && strings.Contains(*typeLine, "Land")
+}
+
+// Basics are in every deck, so they'd top the inclusion-rate list and co-occur
+// with everything. They are excluded from card_stats and card_pair_stats.
+func isBasicLand(typeLine *string) bool {
+	return isLand(typeLine) && strings.Contains(*typeLine, "Basic")
+}
 
 // acc accumulates a win/loss record over a group of decks.
 type acc struct {
@@ -48,6 +60,10 @@ type pairAcc struct {
 	wins    int
 }
 
+// deckCards is one deck's main-board contents, pre-filtered for the two things
+// that read it: `set` (nonbasic presence) drives card_stats and card_pair_stats;
+// cmcSum/qtySum are accumulated over nonlands only, so avg mana value is the
+// conventional nonland average rather than being dragged to ~1.2 by 17 basics.
 type deckCards struct {
 	set    map[uuid.UUID]struct{}
 	cmcSum float64
@@ -70,8 +86,10 @@ func aggregate(decks []model.DeckRow, cards []model.DeckCardRow) *model.Results 
 			d = &deckCards{set: map[uuid.UUID]struct{}{}}
 			perDeck[dc.DecklistID] = d
 		}
-		d.set[dc.CardID] = struct{}{}
-		if dc.CMC != nil {
+		if !isBasicLand(dc.TypeLine) {
+			d.set[dc.CardID] = struct{}{}
+		}
+		if dc.CMC != nil && !isLand(dc.TypeLine) {
 			d.cmcSum += *dc.CMC * float64(dc.Quantity)
 			d.qtySum += dc.Quantity
 		}

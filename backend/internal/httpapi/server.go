@@ -56,6 +56,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/cubes/{id}/cards", s.handleGetCubeCards)
 
 		r.Get("/cards/{id}/image", s.handleCardImage)
+		r.Get("/cards/{slug}", s.handleGetCard)
 
 		r.Get("/decklists", s.handleListDecklists)
 		r.Get("/decklists/{id}", s.handleGetDecklist)

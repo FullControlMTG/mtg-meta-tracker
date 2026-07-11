@@ -130,7 +130,7 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
     return (
       <main className="container">
         <h1>Edit deck</h1>
-        <p>Deck not found. <Link href="/decklists">Back to decklists</Link>.</p>
+        <p>Deck not found. <Link href="/decks">Back to decks</Link>.</p>
       </main>
     );
   }
@@ -138,7 +138,7 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
     return (
       <main className="container">
         <h1>Edit deck</h1>
-        <p>You are not allowed to edit this deck. <Link href={`/decklists/${id}`}>View deck</Link>.</p>
+        <p>You are not allowed to edit this deck. <Link href={`/decks/${id}`}>View deck</Link>.</p>
       </main>
     );
   }
@@ -146,7 +146,7 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
   return (
     <main className="container" style={{ maxWidth: 760 }}>
       <p className="muted" style={{ marginBottom: "0.25rem" }}>
-        <Link href={`/decklists/${id}`}>← {detail.decklist.name}</Link>
+        <Link href={`/decks/${id}`}>← {detail.decklist.name}</Link>
       </p>
       <h1>Edit deck</h1>
 

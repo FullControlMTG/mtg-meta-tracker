@@ -20,11 +20,11 @@ export function OwnerActions({
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "1rem", margin: "0.5rem 0 0.25rem" }}>
-      <Link href={`/decklists/${deckId}/edit`} className="button">
+      <Link href={`/decks/${deckId}/edit`} className="button">
         Edit deck
       </Link>
       {gamesPlayed === 0 && (
-        <Link href={`/decklists/${deckId}/edit#record`} className="muted">
+        <Link href={`/decks/${deckId}/edit#record`} className="muted">
           + Add a win/loss record
         </Link>
       )}

@@ -94,10 +94,19 @@ CREATE TABLE IF NOT EXISTS cards (
     set_code       text,
     collector_number text,
     raw            jsonb,                                 -- full Scryfall payload
+    -- URL slug for /cards/<slug>. Generated, so it can never drift from the name:
+    -- "Jace, the Mind Sculptor" -> jace-the-mind-sculptor, "Fire // Ice" -> fire-ice.
+    -- Not unique — two printings of a name are two rows — so slug lookups tie-break
+    -- (see store.GetCardBySlug).
+    slug           text GENERATED ALWAYS AS
+                     (btrim(regexp_replace(lower(name), '[^a-z0-9]+', '-', 'g'), '-')) STORED,
     updated_at     timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_cards_name        ON cards(lower(name));
 CREATE INDEX IF NOT EXISTS idx_cards_color_ident ON cards(color_identity);
+-- idx_cards_slug is created in the migrations section below: on an already-created
+-- cards table the CREATE TABLE above is a no-op, so slug does not exist until the
+-- ALTER runs, and indexing it here would fail on every existing database.
 
 CREATE TABLE IF NOT EXISTS cube_cards (
     cube_id    uuid NOT NULL REFERENCES cubes(id) ON DELETE CASCADE,
@@ -265,6 +274,12 @@ CREATE INDEX IF NOT EXISTS idx_jobs_pending ON jobs(scheduled_at) WHERE status =
 -- ---------------------------------------------------------------------------
 ALTER TABLE cubes ADD COLUMN IF NOT EXISTS content_hash text;
 ALTER TABLE cubes ADD COLUMN IF NOT EXISTS card_list text;
+
+-- Card URL slug. Backfills itself on add (STORED generated column), so an existing
+-- database gets slugs for every cached card the first time the backend boots.
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS slug text GENERATED ALWAYS AS
+    (btrim(regexp_replace(lower(name), '[^a-z0-9]+', '-', 'g'), '-')) STORED;
+CREATE INDEX IF NOT EXISTS idx_cards_slug ON cards(slug);
 
 -- Per-cube progress for the admin "Sync Scryfall images" action. One row per
 -- cube, upserted on each sync (the sync_cube:<id> dedup key means at most one

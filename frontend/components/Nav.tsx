@@ -4,11 +4,12 @@ import Link from "next/link";
 import { apiPost } from "@/lib/api";
 import { useSession } from "@/components/SessionProvider";
 
+// Analytics is the merged stats page and lives per-cube; the bare path redirects
+// to the default cube, so the nav does not need to know which cube that is.
 const links = [
-  { href: "/", label: "Overview" },
   { href: "/analytics", label: "Analytics" },
   { href: "/cubes", label: "Cubes" },
-  { href: "/decklists", label: "Decklists" },
+  { href: "/decks", label: "Decks" },
 ];
 
 export function Nav() {

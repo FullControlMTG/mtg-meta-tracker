@@ -40,7 +40,7 @@ export default async function DecklistDetailPage({ params }: { params: { id: str
   return (
     <main className="container">
       <p className="muted" style={{ marginBottom: "0.25rem" }}>
-        <Link href="/decklists">← Decklists</Link>
+        <Link href="/decks">← Decks</Link>
       </p>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <h1 style={{ margin: 0 }}>{d.name}</h1>

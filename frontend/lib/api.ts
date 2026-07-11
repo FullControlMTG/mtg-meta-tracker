@@ -92,6 +92,7 @@ export interface CubeSyncStatus {
 export interface CubeCard {
   card_id: string;
   card_name: string;
+  slug: string;
   mana_cost?: string;
   cmc?: number;
   type_line?: string;
@@ -126,6 +127,8 @@ export interface Decklist {
 export interface DecklistCard {
   card_id?: string;
   card_name: string;
+  // Absent for an unresolved card — there is no cards row, so nothing to link to.
+  slug?: string;
   quantity: number;
   is_resolved: boolean;
   board: string;
@@ -190,6 +193,7 @@ export interface ColorStat {
 export interface CardStat {
   card_id: string;
   name: string;
+  slug: string;
   image_normal?: string;
   image_art_crop?: string;
   color_identity: number;
@@ -205,11 +209,54 @@ export interface CardStat {
 export interface CardPair {
   card_b_id: string;
   name: string;
+  slug: string;
+  color_identity: number;
   co_count: number;
   support: number;
   confidence_ab: number;
   lift: number;
   pair_winrate: number | null;
+}
+
+// --- card detail (/cards/<slug>) ---
+
+export interface Card {
+  card_id: string;
+  name: string;
+  slug: string;
+  mana_cost?: string;
+  cmc?: number;
+  type_line?: string;
+  oracle_text?: string;
+  color_identity: number;
+  rarity?: string;
+  image_normal?: string;
+  image_art_crop?: string;
+}
+export interface DeckBrief {
+  id: string;
+  name: string;
+  color_identity: number;
+  quantity: number;
+  games_played: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  winrate: number | null;
+  owner?: string;
+}
+export interface CardDetail {
+  card: Card;
+  cube_id: string;
+  in_pool: boolean;
+  // null when the card is in no analyzed deck, or the cube has no analytics run yet.
+  stat: CardStat | null;
+  rank_by_inclusion: number | null;
+  total_ranked: number;
+  color_split: ColorStat[];
+  color_count_split: ColorStat[];
+  pairs: CardPair[];
+  decks: DeckBrief[];
 }
 
 export interface InferResult {

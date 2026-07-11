@@ -16,12 +16,15 @@ type DeckRow struct {
 	Placement  *int
 }
 
-// DeckCardRow is one resolved main-board card belonging to a deck.
+// DeckCardRow is one resolved main-board card belonging to a deck. TypeLine is
+// carried so the engine can exclude lands from mana-value averages and basics
+// from the card breakdown; the filtering lives in aggregate, not in SQL.
 type DeckCardRow struct {
 	DecklistID uuid.UUID
 	CardID     uuid.UUID
 	Quantity   int
 	CMC        *float64
+	TypeLine   *string
 }
 
 type ColorStatRow struct {

@@ -89,6 +89,7 @@ func (s *Store) LookupCubeCardsByName(ctx context.Context, cubeID uuid.UUID, nam
 type CubeCardView struct {
 	ScryfallID    uuid.UUID `json:"card_id"`
 	Name          string    `json:"card_name"`
+	Slug          string    `json:"slug"`
 	ManaCost      *string   `json:"mana_cost,omitempty"`
 	CMC           *float64  `json:"cmc,omitempty"`
 	TypeLine      *string   `json:"type_line,omitempty"`
@@ -101,7 +102,7 @@ type CubeCardView struct {
 // public cube page renders. Ordered so callers can group by color identity.
 func (s *Store) ListCubeCards(ctx context.Context, cubeID uuid.UUID) ([]CubeCardView, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT c.scryfall_id, c.name, c.mana_cost, c.cmc, c.type_line,
+		SELECT c.scryfall_id, c.name, c.slug, c.mana_cost, c.cmc, c.type_line,
 			c.color_identity, c.image_normal, c.image_art_crop
 		FROM cards c
 		JOIN cube_cards cc ON cc.card_id = c.scryfall_id
@@ -111,14 +112,97 @@ func (s *Store) ListCubeCards(ctx context.Context, cubeID uuid.UUID) ([]CubeCard
 		return nil, err
 	}
 	defer rows.Close()
-	var out []CubeCardView
+	out := []CubeCardView{}
 	for rows.Next() {
 		var v CubeCardView
-		if err := rows.Scan(&v.ScryfallID, &v.Name, &v.ManaCost, &v.CMC, &v.TypeLine,
+		if err := rows.Scan(&v.ScryfallID, &v.Name, &v.Slug, &v.ManaCost, &v.CMC, &v.TypeLine,
 			&v.ColorIdentity, &v.ImageNormal, &v.ImageArtCrop); err != nil {
 			return nil, err
 		}
 		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+// CardView is the full public view of a cached card, for the /cards/<slug> page.
+type CardView struct {
+	ScryfallID    uuid.UUID `json:"card_id"`
+	Name          string    `json:"name"`
+	Slug          string    `json:"slug"`
+	ManaCost      *string   `json:"mana_cost,omitempty"`
+	CMC           *float64  `json:"cmc,omitempty"`
+	TypeLine      *string   `json:"type_line,omitempty"`
+	OracleText    *string   `json:"oracle_text,omitempty"`
+	ColorIdentity int       `json:"color_identity"`
+	Rarity        *string   `json:"rarity,omitempty"`
+	ImageNormal   *string   `json:"image_normal,omitempty"`
+	ImageArtCrop  *string   `json:"image_art_crop,omitempty"`
+}
+
+// GetCardBySlug resolves a URL slug to a card. Slugs are not unique by
+// construction — two printings of a name are two `cards` rows sharing a slug — so
+// prefer the printing that is in this cube's active pool, then the most recently
+// updated. Also reports whether the chosen card is in that pool.
+func (s *Store) GetCardBySlug(ctx context.Context, cubeID uuid.UUID, slug string) (*CardView, bool, error) {
+	var c CardView
+	var inPool bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT c.scryfall_id, c.name, c.slug, c.mana_cost, c.cmc, c.type_line, c.oracle_text,
+			c.color_identity, c.rarity, c.image_normal, c.image_art_crop,
+			cc.card_id IS NOT NULL AS in_pool
+		FROM cards c
+		LEFT JOIN cube_cards cc
+			ON cc.card_id = c.scryfall_id AND cc.cube_id = $1 AND cc.is_active
+		WHERE c.slug = $2
+		ORDER BY in_pool DESC, c.updated_at DESC
+		LIMIT 1`, cubeID, slug).Scan(
+		&c.ScryfallID, &c.Name, &c.Slug, &c.ManaCost, &c.CMC, &c.TypeLine, &c.OracleText,
+		&c.ColorIdentity, &c.Rarity, &c.ImageNormal, &c.ImageArtCrop, &inPool)
+	if err != nil {
+		return nil, false, normErr(err)
+	}
+	return &c, inPool, nil
+}
+
+// DeckBrief is a decklist as listed on a card's page.
+type DeckBrief struct {
+	ID            uuid.UUID `json:"id"`
+	Name          string    `json:"name"`
+	ColorIdentity int       `json:"color_identity"`
+	Quantity      int       `json:"quantity"`
+	GamesPlayed   int       `json:"games_played"`
+	Wins          int       `json:"wins"`
+	Losses        int       `json:"losses"`
+	Draws         int       `json:"draws"`
+	Winrate       *float64  `json:"winrate"`
+	Owner         *string   `json:"owner,omitempty"`
+}
+
+// ListDecksWithCard returns the analyzed decks in a cube whose main board plays a
+// card. Computed live rather than snapshotted: a card sits in a handful of decks,
+// so this is cheap and always fresh even between analytics runs.
+func (s *Store) ListDecksWithCard(ctx context.Context, cubeID, cardID uuid.UUID) ([]DeckBrief, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT d.id, d.name, d.color_identity, dc.quantity,
+			d.games_played, d.wins, d.losses, d.draws, d.winrate, u.username
+		FROM decklist_cards dc
+		JOIN decklists d ON d.id = dc.decklist_id
+		LEFT JOIN users u ON u.id = d.user_id
+		WHERE d.cube_id=$1 AND dc.card_id=$2
+		  AND d.status IN ('active','archived') AND dc.is_resolved AND dc.board='main'
+		ORDER BY d.games_played DESC, d.created_at DESC`, cubeID, cardID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []DeckBrief{}
+	for rows.Next() {
+		var d DeckBrief
+		if err := rows.Scan(&d.ID, &d.Name, &d.ColorIdentity, &d.Quantity,
+			&d.GamesPlayed, &d.Wins, &d.Losses, &d.Draws, &d.Winrate, &d.Owner); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
 	}
 	return out, rows.Err()
 }

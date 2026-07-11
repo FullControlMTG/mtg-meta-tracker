@@ -1,25 +1,17 @@
-import { getCubes } from "@/lib/cube";
-import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
+import { redirect } from "next/navigation";
+import { getDefaultCube } from "@/lib/cube";
 
-// Interactive, client-fetched; render the shell fresh each load.
-export const dynamic = "force-dynamic";
+// Bare /analytics has no meaning — stats belong to a cube. Land on the first one.
+export const revalidate = 300;
 
-export default async function AnalyticsPage() {
-  const cubes = await getCubes();
-  if (cubes.length === 0) {
-    return (
-      <main className="container">
-        <h1>Analytics</h1>
-        <p className="muted">No cube configured yet.</p>
-      </main>
-    );
-  }
+export default async function AnalyticsIndex() {
+  const cube = await getDefaultCube();
+  if (cube) redirect(`/analytics/${cube.cube.id}`);
+
   return (
     <main className="container">
       <h1>Analytics</h1>
-      <AnalyticsDashboard
-        cubes={cubes.map((c) => ({ id: c.cube.id, name: c.cube.name }))}
-      />
+      <p className="muted">No cube configured yet. An admin can add one.</p>
     </main>
   );
 }

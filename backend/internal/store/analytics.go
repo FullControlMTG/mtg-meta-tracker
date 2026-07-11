@@ -49,7 +49,7 @@ func (s *Store) LoadDecksForAnalytics(ctx context.Context, cubeID uuid.UUID) ([]
 
 func (s *Store) LoadDeckCardsForAnalytics(ctx context.Context, cubeID uuid.UUID) ([]model.DeckCardRow, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT dc.decklist_id, dc.card_id, dc.quantity, c.cmc
+		SELECT dc.decklist_id, dc.card_id, dc.quantity, c.cmc, c.type_line
 		FROM decklist_cards dc
 		JOIN decklists d ON d.id = dc.decklist_id
 		JOIN cards c ON c.scryfall_id = dc.card_id
@@ -62,7 +62,7 @@ func (s *Store) LoadDeckCardsForAnalytics(ctx context.Context, cubeID uuid.UUID)
 	var out []model.DeckCardRow
 	for rows.Next() {
 		var r model.DeckCardRow
-		if err := rows.Scan(&r.DecklistID, &r.CardID, &r.Quantity, &r.CMC); err != nil {
+		if err := rows.Scan(&r.DecklistID, &r.CardID, &r.Quantity, &r.CMC, &r.TypeLine); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -230,7 +230,9 @@ func (s *Store) ListColorStats(ctx context.Context, runID uuid.UUID, facet strin
 		return nil, err
 	}
 	defer rows.Close()
-	var out []ColorStat
+	// Non-nil so an empty result encodes as [] rather than null — a JSON null here
+	// crashes the clients that index straight into the array.
+	out := []ColorStat{}
 	for rows.Next() {
 		var c ColorStat
 		if err := rows.Scan(&c.Facet, &c.FacetKey, &c.DeckCount, &c.Games, &c.Wins, &c.Losses,
@@ -245,6 +247,7 @@ func (s *Store) ListColorStats(ctx context.Context, runID uuid.UUID, facet strin
 type CardStat struct {
 	CardID        uuid.UUID `json:"card_id"`
 	Name          string    `json:"name"`
+	Slug          string    `json:"slug"`
 	ImageNormal   *string   `json:"image_normal,omitempty"`
 	ImageArtCrop  *string   `json:"image_art_crop,omitempty"`
 	ColorIdentity int       `json:"color_identity"`
@@ -273,7 +276,7 @@ func (s *Store) ListCardStats(ctx context.Context, runID uuid.UUID, sort string,
 		limit = 100
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT cs.card_id, c.name, c.image_normal, c.image_art_crop, c.color_identity,
+		SELECT cs.card_id, c.name, c.slug, c.image_normal, c.image_art_crop, c.color_identity,
 			cs.deck_count, cs.inclusion_rate, cs.games, cs.wins,
 			cs.winrate, cs.winrate_shrunk, cs.winrate_lift, cs.wilson_lower
 		FROM card_stats cs JOIN cards c ON c.scryfall_id = cs.card_id
@@ -282,10 +285,10 @@ func (s *Store) ListCardStats(ctx context.Context, runID uuid.UUID, sort string,
 		return nil, err
 	}
 	defer rows.Close()
-	var out []CardStat
+	out := []CardStat{}
 	for rows.Next() {
 		var c CardStat
-		if err := rows.Scan(&c.CardID, &c.Name, &c.ImageNormal, &c.ImageArtCrop, &c.ColorIdentity,
+		if err := rows.Scan(&c.CardID, &c.Name, &c.Slug, &c.ImageNormal, &c.ImageArtCrop, &c.ColorIdentity,
 			&c.DeckCount, &c.InclusionRate, &c.Games, &c.Wins,
 			&c.Winrate, &c.WinrateShrunk, &c.WinrateLift, &c.WilsonLower); err != nil {
 			return nil, err
@@ -295,9 +298,39 @@ func (s *Store) ListCardStats(ctx context.Context, runID uuid.UUID, sort string,
 	return out, rows.Err()
 }
 
+// GetCardStat returns one card's row in a run, or ErrNotFound when the card is
+// in no analyzed deck (e.g. it sits in the pool but nobody has drafted it).
+func (s *Store) GetCardStat(ctx context.Context, runID, cardID uuid.UUID) (*CardStat, error) {
+	var c CardStat
+	err := s.pool.QueryRow(ctx, `
+		SELECT cs.card_id, c.name, c.slug, c.image_normal, c.image_art_crop, c.color_identity,
+			cs.deck_count, cs.inclusion_rate, cs.games, cs.wins,
+			cs.winrate, cs.winrate_shrunk, cs.winrate_lift, cs.wilson_lower
+		FROM card_stats cs JOIN cards c ON c.scryfall_id = cs.card_id
+		WHERE cs.run_id=$1 AND cs.card_id=$2`, runID, cardID).Scan(
+		&c.CardID, &c.Name, &c.Slug, &c.ImageNormal, &c.ImageArtCrop, &c.ColorIdentity,
+		&c.DeckCount, &c.InclusionRate, &c.Games, &c.Wins,
+		&c.Winrate, &c.WinrateShrunk, &c.WinrateLift, &c.WilsonLower)
+	if err != nil {
+		return nil, normErr(err)
+	}
+	return &c, nil
+}
+
+// CardInclusionRank ranks a card by popularity within its run: 1-based position
+// by inclusion_rate, plus the size of the ranked field.
+func (s *Store) CardInclusionRank(ctx context.Context, runID uuid.UUID, inclusionRate float64) (rank, total int, err error) {
+	err = s.pool.QueryRow(ctx, `
+		SELECT count(*) FILTER (WHERE inclusion_rate > $2) + 1, count(*)
+		FROM card_stats WHERE run_id=$1`, runID, inclusionRate).Scan(&rank, &total)
+	return rank, total, err
+}
+
 type CardPair struct {
 	CardBID      uuid.UUID `json:"card_b_id"`
 	Name         string    `json:"name"`
+	Slug         string    `json:"slug"`
+	ColorIdent   int       `json:"color_identity"`
 	CoCount      int       `json:"co_count"`
 	Support      float64   `json:"support"`
 	ConfidenceAB float64   `json:"confidence_ab"`
@@ -310,17 +343,21 @@ func (s *Store) ListCardPairs(ctx context.Context, runID, cardID uuid.UUID, limi
 		limit = 25
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT ps.card_b_id, c.name, ps.co_count, ps.support, ps.confidence_ab, ps.lift, ps.pair_winrate
+		SELECT ps.card_b_id, c.name, c.slug, c.color_identity,
+			ps.co_count, ps.support, ps.confidence_ab, ps.lift, ps.pair_winrate
 		FROM card_pair_stats ps JOIN cards c ON c.scryfall_id = ps.card_b_id
 		WHERE ps.run_id=$1 AND ps.card_a_id=$2 ORDER BY ps.lift DESC LIMIT $3`, runID, cardID, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []CardPair
+	// A card with no co-occurring pairs is the common case in a young meta. Returning
+	// nil here encodes as JSON null and blows up every client that reads .length.
+	out := []CardPair{}
 	for rows.Next() {
 		var p CardPair
-		if err := rows.Scan(&p.CardBID, &p.Name, &p.CoCount, &p.Support, &p.ConfidenceAB, &p.Lift, &p.PairWinrate); err != nil {
+		if err := rows.Scan(&p.CardBID, &p.Name, &p.Slug, &p.ColorIdent,
+			&p.CoCount, &p.Support, &p.ConfidenceAB, &p.Lift, &p.PairWinrate); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
