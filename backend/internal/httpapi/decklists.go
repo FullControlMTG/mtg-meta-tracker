@@ -34,6 +34,18 @@ func (s *Server) decklistView(r *http.Request, d *domain.Decklist) map[string]an
 	return view
 }
 
+// withUnresolved reports the names a save could not match, so a card that was
+// silently dropped is visible in the response that dropped it. Only /infer-colors
+// used to say anything, which meant an actual save could quietly lose cards.
+// Always a list, never null, so the client can render it without a nil check.
+func withUnresolved(view map[string]any, unresolved []string) map[string]any {
+	if unresolved == nil {
+		unresolved = []string{}
+	}
+	view["unresolved"] = unresolved
+	return view
+}
+
 func (s *Server) handleListDecklists(w http.ResponseWriter, r *http.Request) {
 	var f store.DecklistFilter
 	if v := r.URL.Query().Get("cube"); v != "" {
@@ -177,7 +189,7 @@ func (s *Server) handleCreateDecklist(w http.ResponseWriter, r *http.Request) {
 		d, _ = s.store.GetDecklist(r.Context(), d.ID)
 	}
 	s.enqueueRecompute(r, cubeID, "deck_created")
-	writeJSON(w, http.StatusCreated, s.decklistView(r, d))
+	writeJSON(w, http.StatusCreated, withUnresolved(s.decklistView(r, d), resolved.Unresolved))
 }
 
 func (s *Server) handlePatchDecklist(w http.ResponseWriter, r *http.Request) {
@@ -236,6 +248,7 @@ func (s *Server) handlePatchDecklist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var cards []domain.DecklistCard
+	var unresolved []string
 	if req.DecklistRaw != nil && *req.DecklistRaw != d.DecklistRaw {
 		if strings.TrimSpace(*req.DecklistRaw) == "" {
 			writeErr(w, http.StatusBadRequest, "decklist_raw cannot be empty")
@@ -250,6 +263,7 @@ func (s *Server) handlePatchDecklist(w http.ResponseWriter, r *http.Request) {
 		d.ColorIdentity = resolved.ColorIdentity
 		d.CardCount = countMain(resolved.Cards)
 		cards = resolved.Cards
+		unresolved = resolved.Unresolved
 	}
 
 	if err := s.store.UpdateDecklist(r.Context(), d, cards); err != nil {
@@ -257,7 +271,7 @@ func (s *Server) handlePatchDecklist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.enqueueRecompute(r, d.CubeID, "deck_updated")
-	writeJSON(w, http.StatusOK, s.decklistView(r, d))
+	writeJSON(w, http.StatusOK, withUnresolved(s.decklistView(r, d), unresolved))
 }
 
 func (s *Server) handlePatchDecklistRecord(w http.ResponseWriter, r *http.Request) {

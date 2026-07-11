@@ -55,21 +55,32 @@ func (s *Store) GetCardImageURL(ctx context.Context, id uuid.UUID, variant strin
 }
 
 // LookupCubeCardsByName resolves card names against a cube's active pool,
-// case-insensitively. The returned map is keyed by lower(name).
+// case-insensitively.
+//
+// A card answers to more than one name: a double-faced card is stored under its
+// canonical "Front // Back" but decklists write "Front / Back" or just "Front",
+// and a Universes Beyond printing is stored under its real name while the list
+// writes the flavor name ("White Tower of Ecthelion" for Karakas). Both the SQL
+// predicate and the returned map therefore work over every alias, so a caller
+// can probe with whatever the list wrote. Keying only on the canonical name is
+// what made DFC deck cards miss the pool and re-resolve to a different printing.
 func (s *Store) LookupCubeCardsByName(ctx context.Context, cubeID uuid.UUID, names []string) (map[string]domain.Card, error) {
 	out := make(map[string]domain.Card)
 	if len(names) == 0 {
 		return out, nil
 	}
-	lowered := make([]string, len(names))
-	for i, n := range names {
-		lowered[i] = strings.ToLower(n)
+	lowered := make([]string, 0, len(names)*2)
+	for _, n := range names {
+		lowered = append(lowered, strings.ToLower(n), strings.ToLower(FrontFace(n)))
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT c.scryfall_id, c.name, c.cmc, c.color_identity
+		SELECT c.scryfall_id, c.name, c.cmc, c.color_identity, c.raw->>'flavor_name'
 		FROM cards c
 		JOIN cube_cards cc ON cc.card_id = c.scryfall_id
-		WHERE cc.cube_id = $1 AND cc.is_active AND lower(c.name) = ANY($2::text[])`,
+		WHERE cc.cube_id = $1 AND cc.is_active AND (
+		      lower(c.name) = ANY($2::text[])
+		   OR lower(split_part(c.name, ' // ', 1)) = ANY($2::text[])
+		   OR lower(c.raw->>'flavor_name') = ANY($2::text[]))`,
 		cubeID, lowered)
 	if err != nil {
 		return nil, err
@@ -77,12 +88,28 @@ func (s *Store) LookupCubeCardsByName(ctx context.Context, cubeID uuid.UUID, nam
 	defer rows.Close()
 	for rows.Next() {
 		var c domain.Card
-		if err := rows.Scan(&c.ScryfallID, &c.Name, &c.CMC, &c.ColorIdentity); err != nil {
+		var flavor *string
+		if err := rows.Scan(&c.ScryfallID, &c.Name, &c.CMC, &c.ColorIdentity, &flavor); err != nil {
 			return nil, err
 		}
 		out[strings.ToLower(c.Name)] = c
+		out[strings.ToLower(FrontFace(c.Name))] = c
+		if flavor != nil && *flavor != "" {
+			out[strings.ToLower(*flavor)] = c
+			out[strings.ToLower(FrontFace(*flavor))] = c
+		}
 	}
 	return out, rows.Err()
+}
+
+// FrontFace reduces "Front // Back" or "Front / Back" to "Front". Decklists and
+// Scryfall disagree on how many slashes a double-faced card gets, so every name
+// comparison has to be able to normalize both.
+func FrontFace(name string) string {
+	if i := strings.IndexByte(name, '/'); i >= 0 {
+		return strings.TrimSpace(name[:i])
+	}
+	return name
 }
 
 // CubeCardView enriches a cube's active card with cached Scryfall fields for display.
@@ -253,10 +280,12 @@ func (s *Store) ListDecksWithCard(ctx context.Context, cubeID, cardID uuid.UUID)
 }
 
 // Absent cards are soft-removed (not deleted) so old decklists still resolve.
-func (s *Store) SyncCubeCards(ctx context.Context, cubeID uuid.UUID, activeIDs []uuid.UUID) error {
+// Returns the number of active rows the cube actually holds once committed, so
+// the caller can check that against what it asked for rather than assuming.
+func (s *Store) SyncCubeCards(ctx context.Context, cubeID uuid.UUID, activeIDs []uuid.UUID) (int, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
@@ -269,7 +298,7 @@ func (s *Store) SyncCubeCards(ctx context.Context, cubeID uuid.UUID, activeIDs [
 		UPDATE cube_cards SET is_active=false, removed_at=now()
 		WHERE cube_id=$1 AND is_active AND NOT (card_id = ANY($2::uuid[]))`,
 		cubeID, idStrs); err != nil {
-		return err
+		return 0, err
 	}
 
 	for _, id := range activeIDs {
@@ -279,8 +308,18 @@ func (s *Store) SyncCubeCards(ctx context.Context, cubeID uuid.UUID, activeIDs [
 			ON CONFLICT (cube_id, card_id)
 			DO UPDATE SET is_active=true, removed_at=NULL`,
 			cubeID, id); err != nil {
-			return err
+			return 0, err
 		}
 	}
-	return tx.Commit(ctx)
+
+	var active int
+	if err := tx.QueryRow(ctx,
+		`SELECT count(*) FROM cube_cards WHERE cube_id=$1 AND is_active`, cubeID).
+		Scan(&active); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+	return active, nil
 }

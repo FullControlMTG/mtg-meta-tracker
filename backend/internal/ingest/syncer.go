@@ -43,58 +43,101 @@ func (s *Syncer) SyncCube(ctx context.Context, cubeID uuid.UUID) error {
 	// here are best-effort — never let progress bookkeeping fail the actual sync.
 	_ = s.store.BeginCubeSyncProgress(ctx, cubeID, "resolving")
 
-	// Parse the pasted list into the set of unique mainboard card names.
-	names := poolNamesFromList(cube.CardList)
+	// Parse the pasted list into the unique mainboard entries that make up the pool.
+	entries, st := poolEntriesFromList(cube.CardList)
+	log.Printf("sync cube %s: parsed %d lines -> %d entries (main=%d side=%d maybe=%d), "+
+		"%d annotated, %d merged, %d headers, %d comments",
+		cubeID, st.Lines, st.Entries, st.Main, st.Side, st.Maybe,
+		st.Annotated, st.Merged, st.Headers, st.Comments)
 
-	// Change detection: fingerprint the name-set. If it matches the last built
+	// Change detection: fingerprint the entry-set. If it matches the last built
 	// list, skip the expensive Scryfall resolve / pool rewrite / analytics
 	// recompute and just record that we checked.
-	hash := hashNames(names)
+	hash := hashEntries(entries)
 	if cube.ContentHash != nil && *cube.ContentHash == hash {
 		if err := s.store.SetCubeSyncState(ctx, cubeID, hash, time.Now()); err != nil {
 			_ = s.store.FinishCubeSyncProgress(ctx, cubeID, "failed", err.Error())
 			return err
 		}
-		// Report the size of the pool we actually built, not len(names) — the pasted
+		// Report the size of the pool we actually built, not len(entries) — the pasted
 		// list may contain names that never resolved, and counting those would claim
 		// more cards than the cube holds. The previous run's `unresolved` still
 		// stands (same list ⇒ same names failed), so BeginCubeSyncProgress leaves it.
 		active, err := s.store.CountActiveCubeCards(ctx, cubeID)
 		if err != nil {
-			active = len(names) // best-effort; never fail a sync over a progress counter
+			active = len(entries) // best-effort; never fail a sync over a progress counter
 		}
 		_ = s.store.SetCubeSyncResolved(ctx, cubeID, active, 0)
 		_ = s.store.FinishCubeSyncProgress(ctx, cubeID, "done", "")
-		log.Printf("sync cube %s: list unchanged (%d cards), skipped", cubeID, active)
+		// Say what the pool actually holds, not just that we skipped: this branch is
+		// how a bad pool stays frozen across syncs, so the number has to be visible.
+		log.Printf("sync cube %s: list unchanged, skipped resolve; pool holds %d cards (list has %d entries)",
+			cubeID, active, len(entries))
 		return nil
 	}
 
-	cards, notFound, err := s.scry.ResolveByNames(ctx, names)
+	queries := make([]scryfall.Query, len(entries))
+	for i, e := range entries {
+		queries[i] = scryfall.Query{Name: e.Name, SetCode: e.SetCode, Collector: e.Collector}
+	}
+	results, err := s.scry.Resolve(ctx, queries)
 	if err != nil {
 		_ = s.store.FinishCubeSyncProgress(ctx, cubeID, "failed", err.Error())
 		return fmt.Errorf("scryfall: %w", err)
 	}
+
+	// Walk the results once: upsert what resolved, name what didn't. Results come
+	// back one-per-query in query order, so a card is bound to its own entry by
+	// position — never by matching Scryfall's canonical name against the pasted one.
+	var (
+		cards      []domain.Card
+		activeIDs  []uuid.UUID
+		unresolved []string
+		seen       = map[uuid.UUID]int{} // scryfall id -> entry index that claimed it
+		dupes      int
+	)
+	for i, r := range results {
+		if r.Card == nil {
+			unresolved = append(unresolved, describeEntry(entries[i]))
+			continue
+		}
+		if err := s.store.UpsertCard(ctx, r.Card); err != nil {
+			_ = s.store.FinishCubeSyncProgress(ctx, cubeID, "failed", err.Error())
+			return fmt.Errorf("upsert card %s: %w", r.Card.Name, err)
+		}
+		// Two entries resolving to one printing collapse into a single cube_cards row.
+		// That is a silent shrink, so say which entries collided.
+		if prev, dup := seen[r.Card.ScryfallID]; dup {
+			dupes++
+			log.Printf("sync cube %s: duplicate printing: %q and %q both resolved to %s",
+				cubeID, describeEntry(entries[prev]), describeEntry(entries[i]), r.Card.ScryfallID)
+			continue
+		}
+		seen[r.Card.ScryfallID] = i
+		cards = append(cards, *r.Card)
+		activeIDs = append(activeIDs, r.Card.ScryfallID)
+	}
+
 	// Unresolved names are dropped from the pool, so record them on the progress
 	// row for the admin page — logging alone let a typo silently shrink the cube.
 	// Written unconditionally so a run that fixes a typo clears the stale list.
-	_ = s.store.SetCubeSyncUnresolved(ctx, cubeID, notFound)
-	if len(notFound) > 0 {
-		log.Printf("sync cube %s: %d names unresolved: %v", cubeID, len(notFound), notFound)
+	_ = s.store.SetCubeSyncUnresolved(ctx, cubeID, unresolved)
+	if len(unresolved) > 0 {
+		log.Printf("sync cube %s: %d entries unresolved: %v", cubeID, len(unresolved), unresolved)
 	}
+	log.Printf("sync cube %s: upsert: %d resolved, %d distinct printings, %d duplicates dropped",
+		cubeID, len(results)-len(unresolved), len(activeIDs), dupes)
 
-	activeIDs := make([]uuid.UUID, 0, len(cards))
-	for i := range cards {
-		if err := s.store.UpsertCard(ctx, &cards[i]); err != nil {
-			_ = s.store.FinishCubeSyncProgress(ctx, cubeID, "failed", err.Error())
-			return fmt.Errorf("upsert card %s: %w", cards[i].Name, err)
-		}
-		activeIDs = append(activeIDs, cards[i].ScryfallID)
-	}
-
-	if err := s.store.SyncCubeCards(ctx, cubeID, activeIDs); err != nil {
+	active, err := s.store.SyncCubeCards(ctx, cubeID, activeIDs)
+	if err != nil {
 		_ = s.store.FinishCubeSyncProgress(ctx, cubeID, "failed", err.Error())
 		return fmt.Errorf("sync cube_cards: %w", err)
 	}
+	if active != len(activeIDs) {
+		log.Printf("sync cube %s: WARNING cube_cards holds %d active rows, expected %d",
+			cubeID, active, len(activeIDs))
+	}
+	log.Printf("sync cube %s: cube_cards: %d active rows (expected %d)", cubeID, active, len(activeIDs))
 	if err := s.store.SetCubeSyncState(ctx, cubeID, hash, time.Now()); err != nil {
 		_ = s.store.FinishCubeSyncProgress(ctx, cubeID, "failed", err.Error())
 		return err
@@ -165,31 +208,58 @@ func (s *Syncer) prefetchImages(ctx context.Context, cubeID uuid.UUID, cards []d
 		cubeID, len(items)-failed, len(items), failed)
 }
 
-// poolNamesFromList parses a raw pasted decklist into the set of mainboard card
-// names that make up the cube pool. Quantities are ignored (a cube is a set of
-// distinct cards); side/maybe boards are excluded. Returns nil for an empty or
-// nil list, which clears the pool.
-func poolNamesFromList(cardList *string) []string {
+// poolEntriesFromList parses a raw pasted decklist into the mainboard entries
+// that make up the cube pool, plus a per-line accounting of the parse.
+// Quantities are ignored (a cube is a set of distinct cards); side/maybe boards
+// are excluded. Returns nil for an empty or nil list, which clears the pool.
+//
+// The returned Stats matter: entries lost here — to a stray section header, or
+// to the same-name merge — never reach Scryfall, so they can never show up as
+// unresolved names. Without the counters that loss is completely invisible.
+func poolEntriesFromList(cardList *string) ([]decklist.ParsedCard, decklist.Stats) {
 	if cardList == nil {
-		return nil
+		return nil, decklist.Stats{}
 	}
-	var names []string
-	for _, p := range decklist.ParseList(*cardList) {
+	parsed, st := decklist.ParseListStats(*cardList)
+	var entries []decklist.ParsedCard
+	for _, p := range parsed {
 		if p.Board == domain.BoardMain {
-			names = append(names, p.Name)
+			entries = append(entries, p)
 		}
 	}
-	return names
+	return entries, st
 }
 
-// hashNames produces an order-independent, case-insensitive fingerprint of a
-// card-name set, used to detect whether the cube list has changed.
-func hashNames(names []string) string {
-	norm := make([]string, len(names))
-	for i, n := range names {
-		norm[i] = strings.ToLower(strings.TrimSpace(n))
+// describeEntry renders an entry the way the list wrote it, so an unresolved
+// report names the printing that failed and not just the card.
+func describeEntry(e decklist.ParsedCard) string {
+	if e.SetCode == "" {
+		return e.Name
+	}
+	if e.Collector == "" {
+		return fmt.Sprintf("%s (%s)", e.Name, e.SetCode)
+	}
+	return fmt.Sprintf("%s (%s) %s", e.Name, e.SetCode, e.Collector)
+}
+
+// Bumped whenever resolution changes what a given list produces. It is folded
+// into the content hash so every stored fingerprint is invalidated on deploy —
+// otherwise the unchanged-list short-circuit would skip the resolve and keep
+// serving the pool the old resolver built.
+const resolverVersion = 2
+
+// hashEntries produces an order-independent, case-insensitive fingerprint of the
+// pool entries, used to detect whether the cube list has changed. The printing
+// is part of the fingerprint: re-pointing a card at a different set or collector
+// number has to trigger a re-resolve even though the name is the same.
+func hashEntries(entries []decklist.ParsedCard) string {
+	norm := make([]string, len(entries))
+	for i, e := range entries {
+		norm[i] = strings.ToLower(strings.TrimSpace(e.Name)) + "|" +
+			strings.ToLower(e.SetCode) + "|" + strings.ToLower(e.Collector)
 	}
 	sort.Strings(norm)
-	sum := sha256.Sum256([]byte(strings.Join(norm, "\n")))
+	joined := fmt.Sprintf("v%d\n%s", resolverVersion, strings.Join(norm, "\n"))
+	sum := sha256.Sum256([]byte(joined))
 	return hex.EncodeToString(sum[:])
 }

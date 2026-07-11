@@ -1,4 +1,4 @@
-.PHONY: db-up db-down db-dump db-restore db-schema backend frontend dev
+.PHONY: db-up db-down db-dump db-restore db-schema backend frontend test dev
 
 # Local dev talks to docker-compose.dev.yml (published port, named volume).
 # docker-compose.yml is the production deployment and is not usable locally.
@@ -24,6 +24,9 @@ backend:      ## run the API on :8080 (defaults connect to the dev db above)
 
 frontend:     ## run Next.js on :3000, proxying /api -> :8080
 	cd frontend && npm run dev
+
+test:         ## vet + unit tests (no database needed)
+	cd backend && go vet ./... && go test ./...
 
 dev: db-up
 	@echo "run 'make backend' and 'make frontend' in separate shells"

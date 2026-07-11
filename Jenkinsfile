@@ -93,7 +93,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN go vet ./... && go build ./...
+RUN go vet ./... && go build ./... && go test ./...
 DOCKERFILE
                 '''
                 sh '''

@@ -157,6 +157,9 @@ export interface DecklistDetail {
   color_string: string;
   cards: DecklistCard[];
   user?: PublicUser;
+  // Names the save could not match to a card. Present on the create/update
+  // responses; absent on plain reads.
+  unresolved?: string[];
 }
 
 export interface RunMeta {
