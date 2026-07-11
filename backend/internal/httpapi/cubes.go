@@ -145,8 +145,12 @@ func (s *Server) handleCreateCube(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "could not create cube")
 		return
 	}
-	// Build the pool from the pasted list, if any.
+	// Build the pool from the pasted list, if any. Mark it queued up front so the
+	// admin page can follow the run from the moment it creates the cube — without
+	// a row, sync-status reports "none" (never synced) and the poller would give
+	// up before the worker (~2s) ever claims the job.
 	if c.CardList != nil {
+		_ = s.store.BeginCubeSyncProgress(r.Context(), c.ID, "queued")
 		s.enqueueCubeSync(r, c.ID)
 	}
 	// Bust the public cube listing so the new cube surfaces promptly rather than
@@ -208,6 +212,13 @@ func (s *Server) handlePatchCube(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if listChanged {
+		// Mark the sync queued before enqueueing, as handleSyncCube does. Until the
+		// worker claims the job (~2s), sync-status would otherwise still serve the
+		// previous run's *done* row — so an admin who just edited the list to fix a
+		// typo would see the old card count and the old unresolved names reported as
+		// the result of their edit. Leaving "done" is what suppresses that; the
+		// resolve then overwrites the counters and the unresolved list.
+		_ = s.store.BeginCubeSyncProgress(r.Context(), c.ID, "queued")
 		s.enqueueCubeSync(r, c.ID)
 	}
 	// Bust the public cube listing and this cube's page so edits surface promptly

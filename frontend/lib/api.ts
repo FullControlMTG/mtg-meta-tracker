@@ -83,6 +83,9 @@ export interface CubeSyncStatus {
   images_done?: number;
   images_failed?: number;
   error?: string | null;
+  // Names from the pasted list that Scryfall could not resolve. They are absent
+  // from the pool, so the admin page must show them.
+  unresolved?: string[];
   started_at?: string;
   finished_at?: string | null;
 }

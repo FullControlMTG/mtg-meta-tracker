@@ -55,9 +55,17 @@ func (s *Syncer) SyncCube(ctx context.Context, cubeID uuid.UUID) error {
 			_ = s.store.FinishCubeSyncProgress(ctx, cubeID, "failed", err.Error())
 			return err
 		}
-		_ = s.store.SetCubeSyncResolved(ctx, cubeID, len(names), 0)
+		// Report the size of the pool we actually built, not len(names) — the pasted
+		// list may contain names that never resolved, and counting those would claim
+		// more cards than the cube holds. The previous run's `unresolved` still
+		// stands (same list ⇒ same names failed), so BeginCubeSyncProgress leaves it.
+		active, err := s.store.CountActiveCubeCards(ctx, cubeID)
+		if err != nil {
+			active = len(names) // best-effort; never fail a sync over a progress counter
+		}
+		_ = s.store.SetCubeSyncResolved(ctx, cubeID, active, 0)
 		_ = s.store.FinishCubeSyncProgress(ctx, cubeID, "done", "")
-		log.Printf("sync cube %s: list unchanged (%d cards), skipped", cubeID, len(names))
+		log.Printf("sync cube %s: list unchanged (%d cards), skipped", cubeID, active)
 		return nil
 	}
 
@@ -66,6 +74,10 @@ func (s *Syncer) SyncCube(ctx context.Context, cubeID uuid.UUID) error {
 		_ = s.store.FinishCubeSyncProgress(ctx, cubeID, "failed", err.Error())
 		return fmt.Errorf("scryfall: %w", err)
 	}
+	// Unresolved names are dropped from the pool, so record them on the progress
+	// row for the admin page — logging alone let a typo silently shrink the cube.
+	// Written unconditionally so a run that fixes a typo clears the stale list.
+	_ = s.store.SetCubeSyncUnresolved(ctx, cubeID, notFound)
 	if len(notFound) > 0 {
 		log.Printf("sync cube %s: %d names unresolved: %v", cubeID, len(notFound), notFound)
 	}

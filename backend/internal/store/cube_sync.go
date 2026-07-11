@@ -19,15 +19,19 @@ type CubeSyncProgress struct {
 	ImagesDone   int        `json:"images_done"`
 	ImagesFailed int        `json:"images_failed"`
 	Error        *string    `json:"error,omitempty"`
+	Unresolved   []string   `json:"unresolved"`
 	StartedAt    time.Time  `json:"started_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 	FinishedAt   *time.Time `json:"finished_at,omitempty"`
 }
 
-const cubeSyncCols = `cube_id, status, cards_total, images_total, images_done, images_failed, error, started_at, updated_at, finished_at`
+const cubeSyncCols = `cube_id, status, cards_total, images_total, images_done, images_failed, error, unresolved, started_at, updated_at, finished_at`
 
 // BeginCubeSyncProgress upserts a fresh progress row for a starting sync,
-// resetting counters/error and clearing finished_at.
+// resetting counters/error and clearing finished_at. It deliberately leaves
+// `unresolved` alone: a sync that finds the list unchanged skips the resolve
+// entirely, and the previous run's unresolved names are still the truth for the
+// current pool. A run that does resolve overwrites it via SetCubeSyncUnresolved.
 func (s *Store) BeginCubeSyncProgress(ctx context.Context, cubeID uuid.UUID, status string) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO cube_sync_progress (cube_id, status, started_at, updated_at)
@@ -47,6 +51,21 @@ func (s *Store) SetCubeSyncResolved(ctx context.Context, cubeID uuid.UUID, cards
 		SET status='downloading', cards_total=$2, images_total=$3, images_done=0, updated_at=now()
 		WHERE cube_id=$1`,
 		cubeID, cardsTotal, imagesTotal)
+	return err
+}
+
+// SetCubeSyncUnresolved records the names Scryfall could not resolve on this
+// run. Call it after every resolve, including with an empty slice, so a run that
+// fixes a typo clears the previous run's list.
+func (s *Store) SetCubeSyncUnresolved(ctx context.Context, cubeID uuid.UUID, names []string) error {
+	if names == nil {
+		names = []string{} // the column is NOT NULL; nil would encode as NULL
+	}
+	_, err := s.pool.Exec(ctx, `
+		UPDATE cube_sync_progress
+		SET unresolved=$2, updated_at=now()
+		WHERE cube_id=$1`,
+		cubeID, names)
 	return err
 }
 
@@ -83,7 +102,7 @@ func (s *Store) GetCubeSyncProgress(ctx context.Context, cubeID uuid.UUID) (*Cub
 	err := s.pool.QueryRow(ctx,
 		`SELECT `+cubeSyncCols+` FROM cube_sync_progress WHERE cube_id=$1`, cubeID).
 		Scan(&p.CubeID, &p.Status, &p.CardsTotal, &p.ImagesTotal, &p.ImagesDone,
-			&p.ImagesFailed, &p.Error, &p.StartedAt, &p.UpdatedAt, &p.FinishedAt)
+			&p.ImagesFailed, &p.Error, &p.Unresolved, &p.StartedAt, &p.UpdatedAt, &p.FinishedAt)
 	if err != nil {
 		return nil, normErr(err)
 	}

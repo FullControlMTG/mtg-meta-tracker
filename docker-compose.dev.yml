@@ -1,0 +1,34 @@
+# Local development database.
+#
+# docker-compose.yml is the production deployment: its db service has no
+# published port (the backend reaches it over the compose network) and it
+# bind-mounts a NAS path that only exists on the server. Neither works for
+# running `make backend` / `make frontend` on a laptop.
+#
+# This file is used explicitly via `-f` (see the Makefile), never auto-loaded —
+# naming it docker-compose.override.yml would silently merge it into the
+# production `docker compose up` that Jenkins runs.
+#
+# The credentials are the same ones the backend's built-in default DATABASE_URL
+# expects, so a plain `make db-up && make backend` works with no .env at all.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: mtg-cube-db-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mtg}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mtg}
+      POSTGRES_DB: ${POSTGRES_DB:-mtg_meta}
+    ports:
+      - "5432:5432"
+    volumes:
+      - mtg-dev-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mtg} -d ${POSTGRES_DB:-mtg_meta}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  mtg-dev-pgdata:

@@ -38,8 +38,37 @@ export default function AdminCubesPage() {
 
   function refresh() {
     apiGet<CubeView[]>("/cubes")
-      .then(setCubes)
+      .then((cs) => {
+        setCubes(cs);
+        loadSyncStatuses(cs);
+      })
       .catch(() => setCubes([]));
+  }
+
+  // Pull each cube's last sync result on load so anything the admin needs to act
+  // on survives a reload. Unresolved names are dropped from the pool, so without
+  // this the only way to learn a card went missing is to happen to be watching
+  // the page at the moment its sync finishes.
+  function loadSyncStatuses(cs: CubeView[]) {
+    for (const cv of cs) {
+      const id = cv.cube.id;
+      apiGetNoStore<CubeSyncStatus>(`/admin/cubes/${id}/sync-status`)
+        .then((s) => {
+          // A sync started before this load (or in another tab) is still running.
+          if (isActive(s)) {
+            pollSync(id);
+            return;
+          }
+          // Otherwise keep the panel quiet unless there's something to report.
+          const dropped = s.status === "done" && (s.unresolved?.length ?? 0) > 0;
+          if (s.status === "failed" || dropped) {
+            setProgress((p) => ({ ...p, [id]: s }));
+          }
+        })
+        .catch(() => {
+          // Non-fatal: the cube list still renders without its sync status.
+        });
+    }
   }
 
   useEffect(() => {
@@ -54,6 +83,29 @@ export default function AdminCubesPage() {
   // A sync is considered active (button disabled, panel shown) in these phases.
   function isActive(s?: CubeSyncStatus): boolean {
     return s?.status === "queued" || s?.status === "resolving" || s?.status === "downloading";
+  }
+
+  // Follow a running sync to completion, mirroring each poll into `progress` so
+  // the panel shows the live phase/bar and then the final summary — including any
+  // names Scryfall could not resolve. Used by both the "Sync Scryfall images"
+  // button and a paste that rebuilds the pool.
+  function pollSync(id: string) {
+    stopPolling(id); // never run two pollers for one cube
+    const poll = async () => {
+      try {
+        const s = await apiGetNoStore<CubeSyncStatus>(`/admin/cubes/${id}/sync-status`);
+        setProgress((p) => ({ ...p, [id]: s }));
+        if (s.status === "done" || s.status === "failed" || s.status === "none") {
+          stopPolling(id);
+          // Pick up the updated card count and synced time.
+          refresh();
+        }
+      } catch {
+        // Transient error — keep polling; the interval will try again.
+      }
+    };
+    timers.current[id] = setInterval(poll, 1500);
+    void poll(); // fire immediately rather than waiting out the first interval
   }
 
   function stopPolling(id: string) {
@@ -89,13 +141,16 @@ export default function AdminCubesPage() {
     setErr(null);
     try {
       const body = { name, moxfield_url: moxfieldUrl, description, card_list: cardList };
-      if (editingId) {
-        await apiPatch<CubeView>(`/admin/cubes/${editingId}`, body);
-      } else {
-        await apiPost<CubeView>("/admin/cubes", body);
-      }
+      const saved = editingId
+        ? await apiPatch<CubeView>(`/admin/cubes/${editingId}`, body)
+        : await apiPost<CubeView>("/admin/cubes", body);
+      const hadList = cardList.trim() !== "";
       resetForm();
       refresh();
+      // A pasted list rebuilds the pool in a background job. Follow it, so the
+      // admin sees it finish and — crucially — sees any names Scryfall could not
+      // resolve, which are silently absent from the cube.
+      if (hadList) pollSync(saved.cube.id);
       // Also update the nav, the public server-rendered cube pages, and the
       // user's other tabs — not just this page's local list.
       void refreshSession();
@@ -124,22 +179,7 @@ export default function AdminCubesPage() {
       });
       return;
     }
-    stopPolling(id); // in case a previous sync for this cube is still polling
-    const poll = async () => {
-      try {
-        const s = await apiGetNoStore<CubeSyncStatus>(`/admin/cubes/${id}/sync-status`);
-        setProgress((p) => ({ ...p, [id]: s }));
-        if (s.status === "done" || s.status === "failed" || s.status === "none") {
-          stopPolling(id);
-          // Pick up the updated card count and synced time.
-          refresh();
-        }
-      } catch {
-        // Transient error — keep polling; the interval will try again.
-      }
-    };
-    timers.current[id] = setInterval(poll, 1500);
-    void poll(); // fire immediately rather than waiting out the first interval
+    pollSync(id);
   }
 
   async function remove(cv: CubeView) {
@@ -298,11 +338,21 @@ function SyncProgress({ status }: { status?: CubeSyncStatus }) {
   }
 
   if (status.status === "done") {
+    const unresolved = status.unresolved ?? [];
     return (
-      <p style={{ color: "var(--good, #0a0)", ...barStyle }}>
-        ✓ Synced {status.cards_total ?? 0} cards · {status.images_done ?? 0} images
-        {status.images_failed ? ` · ${status.images_failed} failed` : ""}
-      </p>
+      <div style={barStyle}>
+        <p style={{ color: "var(--good, #0a0)", margin: 0 }}>
+          ✓ Synced {status.cards_total ?? 0} cards · {status.images_done ?? 0} images
+          {status.images_failed ? ` · ${status.images_failed} failed` : ""}
+        </p>
+        {unresolved.length > 0 && (
+          <p style={{ color: "var(--bad)", margin: "0.35rem 0 0" }}>
+            ⚠ {unresolved.length} name{unresolved.length === 1 ? "" : "s"} could not be found on
+            Scryfall and {unresolved.length === 1 ? "is" : "are"} not in the pool —{" "}
+            check the spelling of: {unresolved.join(", ")}
+          </p>
+        )}
+      </div>
     );
   }
 

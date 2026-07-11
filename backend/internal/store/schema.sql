@@ -280,7 +280,12 @@ CREATE TABLE IF NOT EXISTS cube_sync_progress (
     images_done   int NOT NULL DEFAULT 0,
     images_failed int NOT NULL DEFAULT 0,
     error         text,
+    -- Names from the pasted card_list that Scryfall could not resolve. They are
+    -- dropped from the pool, so the admin page surfaces them rather than letting
+    -- a typo silently shrink the cube. Holds the result of the last resolve.
+    unresolved    text[] NOT NULL DEFAULT '{}',
     started_at    timestamptz NOT NULL DEFAULT now(),
     updated_at    timestamptz NOT NULL DEFAULT now(),
     finished_at   timestamptz
 );
+ALTER TABLE cube_sync_progress ADD COLUMN IF NOT EXISTS unresolved text[] NOT NULL DEFAULT '{}';
