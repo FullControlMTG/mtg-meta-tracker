@@ -55,7 +55,10 @@ export interface SortableCard {
   card_name: string;
   cmc?: number;
   type_line?: string;
+  // The colors a card is *displayed* under — its casting cost's colors, or, for a
+  // land, every color it is related to. Derived server-side; see domain.GroupColors.
   // Optional because an unresolved deck card has no `cards` row to join to.
+  group_colors?: number;
   color_identity?: number;
 }
 
@@ -67,7 +70,7 @@ const LAND_RANK = COLORLESS_RANK + 1;
 
 function sectionRank(card: SortableCard): number {
   if (card.type_line && LAND_RE.test(card.type_line)) return LAND_RANK;
-  const bits = card.color_identity ?? 0;
+  const bits = card.group_colors ?? 0;
   if (bits === 0) return COLORLESS_RANK;
   if (popcount(bits) > 1) return MULTICOLOR_RANK;
   return COLORS.findIndex((c) => c.bit === bits);
@@ -92,11 +95,18 @@ function compareIdentity(a: number, b: number): number {
 export function compareCards(a: SortableCard, b: SortableCard): number {
   const bySection = sectionRank(a) - sectionRank(b);
   if (bySection !== 0) return bySection;
-  const byIdentity = compareIdentity(a.color_identity ?? 0, b.color_identity ?? 0);
-  if (byIdentity !== 0) return byIdentity;
+  const byGroup = compareIdentity(a.group_colors ?? 0, b.group_colors ?? 0);
+  if (byGroup !== 0) return byGroup;
   // A card with no cached cmc (only ever an unresolved deck entry) curves as a 0.
   const byCMC = (a.cmc ?? 0) - (b.cmc ?? 0);
   if (byCMC !== 0) return byCMC;
+  // Only now the full identity, which still knows about the colored abilities the
+  // group colors deliberately ignore — so the Azorius rocks cluster together among
+  // the two-drop artifacts. It has to break the tie *under* cmc rather than over it,
+  // or a Noble Hierarch (green, but WUG identity) would sort to the back of the
+  // green section and break the curve the section is read for.
+  const byIdentity = compareIdentity(a.color_identity ?? 0, b.color_identity ?? 0);
+  if (byIdentity !== 0) return byIdentity;
   return a.card_name.localeCompare(b.card_name, undefined, { sensitivity: "base" });
 }
 
@@ -105,10 +115,10 @@ export function sortCards<T extends SortableCard>(cards: T[]): T[] {
   return [...cards].sort(compareCards);
 }
 
-// Bucket cube cards into color sections for display: Lands first (anything whose
-// type line is a land, regardless of color identity), then mono W/U/B/R/G, then
-// Multicolor (>1 color), then Colorless (0 colors, non-land). Empty sections drop.
-export function groupCubeCards<T extends { color_identity: number; type_line?: string }>(
+// Bucket cube cards into the display sections sectionRank ranks: mono W/U/B/R/G,
+// then Multicolor (>1 color), then Colorless (0 colors, non-land), then Lands last
+// (anything whose type line is a land, whatever its colors). Empty sections drop.
+export function groupCubeCards<T extends { group_colors: number; type_line?: string }>(
   cards: T[],
 ): CardGroup<T>[] {
   const order = ["W", "U", "B", "R", "G", "M", "C", "L"];
@@ -125,14 +135,14 @@ export function groupCubeCards<T extends { color_identity: number; type_line?: s
   const buckets: Record<string, T[]> = {};
   for (const card of cards) {
     let key: string;
-    if (card.type_line && /\bland\b/i.test(card.type_line)) {
+    if (card.type_line && LAND_RE.test(card.type_line)) {
       key = "L";
-    } else if (card.color_identity === 0) {
+    } else if (card.group_colors === 0) {
       key = "C";
-    } else if (popcount(card.color_identity) > 1) {
+    } else if (popcount(card.group_colors) > 1) {
       key = "M";
     } else {
-      key = colorByBit(card.color_identity).code;
+      key = colorByBit(card.group_colors).code;
     }
     (buckets[key] ??= []).push(card);
   }

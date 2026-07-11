@@ -1,6 +1,9 @@
 package domain
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 // Color identity bitset: W=1 U=2 B=4 R=8 G=16 (colorless=0).
 type Color uint8
@@ -33,6 +36,62 @@ func ParseColorIdentity(symbols []string) ColorIdentity {
 }
 
 func (ci ColorIdentity) Merge(other ColorIdentity) ColorIdentity { return ci | other }
+
+const allColors = ColorIdentity(White | Blue | Black | Red | Green)
+
+var basicLandTypeRE = map[*regexp.Regexp]Color{
+	regexp.MustCompile(`(?i)\bplains\b`):   White,
+	regexp.MustCompile(`(?i)\bisland\b`):   Blue,
+	regexp.MustCompile(`(?i)\bswamp\b`):    Black,
+	regexp.MustCompile(`(?i)\bmountain\b`): Red,
+	regexp.MustCompile(`(?i)\bforest\b`):   Green,
+}
+
+var (
+	landRE      = regexp.MustCompile(`(?i)\bland\b`)
+	basicLandRE = regexp.MustCompile(`(?i)\bbasic land\b`)
+)
+
+func basicLandTypeColors(text string) ColorIdentity {
+	var ci ColorIdentity
+	for re, c := range basicLandTypeRE {
+		if re.MatchString(text) {
+			ci |= ColorIdentity(c)
+		}
+	}
+	return ci
+}
+
+// GroupColors is the WUBRG bitset a card is *displayed* under, which is not the
+// same question as its color identity.
+//
+// A nonland groups by its casting cost, so a mana rock whose only colored mana
+// symbols sit in an activated ability (an Azorius Signet, a Talisman) groups with
+// the artifacts rather than with the gold cards.
+//
+// A land groups by every color it is *related to*, since the colors a land cares
+// about are rarely in its mana cost and often not in its identity either: the
+// colors it can tap for, the basic land types it has or fetches (Flooded Strand
+// searching for "a Plains or Island card" is an Azorius card), and, for anything
+// fetching a plain "basic land", all five (Prismatic Vista sits with the gold).
+//
+// `produced` is Scryfall's produced_mana; its `C` symbol is not a color and drops
+// out in ParseColorIdentity.
+func GroupColors(typeLine, oracleText string, colors, identity ColorIdentity, produced []string) ColorIdentity {
+	if !landRE.MatchString(typeLine) {
+		return colors
+	}
+	ci := identity.
+		Merge(basicLandTypeColors(typeLine)).
+		Merge(basicLandTypeColors(oracleText)).
+		Merge(ParseColorIdentity(produced))
+	// Only the oracle text — a basic Plains' type line reads "Basic Land — Plains",
+	// and it is a white card, not a five-color one.
+	if basicLandRE.MatchString(oracleText) {
+		ci = ci.Merge(allColors)
+	}
+	return ci
+}
 
 func (ci ColorIdentity) Count() int {
 	n := 0

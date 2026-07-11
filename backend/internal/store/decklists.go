@@ -124,14 +124,16 @@ type DecklistCardView struct {
 	CMC          *float64 `json:"cmc,omitempty"`
 	TypeLine     *string  `json:"type_line,omitempty"`
 	// Nil for an unresolved card, like every other joined field here. The deck
-	// page sorts on it (color → cmc → name), so it has to cross the wire.
+	// page sorts on them (color → cmc → name), so they have to cross the wire.
 	ColorIdentity *int `json:"color_identity,omitempty"`
+	// The section the card displays under; see domain.GroupColors.
+	GroupColors *int `json:"group_colors,omitempty"`
 }
 
 func (s *Store) GetDecklistCardsView(ctx context.Context, decklistID uuid.UUID) ([]DecklistCardView, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT dc.decklist_id, dc.card_id, dc.card_name, dc.quantity, dc.is_resolved, dc.board,
-			c.slug, c.image_art_crop, c.image_normal, c.cmc, c.type_line, c.color_identity
+			c.slug, c.image_art_crop, c.image_normal, c.cmc, c.type_line, c.color_identity,`+groupColorCols+`
 		FROM decklist_cards dc
 		LEFT JOIN cards c ON c.scryfall_id = dc.card_id
 		WHERE dc.decklist_id=$1 ORDER BY dc.board, dc.card_name`, decklistID)
@@ -142,9 +144,16 @@ func (s *Store) GetDecklistCardsView(ctx context.Context, decklistID uuid.UUID) 
 	out := []DecklistCardView{}
 	for rows.Next() {
 		var v DecklistCardView
+		var g groupColorInputs
 		if err := rows.Scan(&v.DecklistID, &v.CardID, &v.CardName, &v.Quantity, &v.IsResolved, &v.Board,
-			&v.Slug, &v.ImageArtCrop, &v.ImageNormal, &v.CMC, &v.TypeLine, &v.ColorIdentity); err != nil {
+			&v.Slug, &v.ImageArtCrop, &v.ImageNormal, &v.CMC, &v.TypeLine, &v.ColorIdentity,
+			&g.colors, &g.oracleText, &g.produced); err != nil {
 			return nil, err
+		}
+		// An unresolved card has no `cards` row to derive from; leave it null.
+		if v.ColorIdentity != nil {
+			group := int(g.resolve(v.TypeLine, *v.ColorIdentity))
+			v.GroupColors = &group
 		}
 		out = append(out, v)
 	}

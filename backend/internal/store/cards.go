@@ -94,8 +94,10 @@ type CubeCardView struct {
 	CMC           *float64  `json:"cmc,omitempty"`
 	TypeLine      *string   `json:"type_line,omitempty"`
 	ColorIdentity int       `json:"color_identity"`
-	ImageNormal   *string   `json:"image_normal,omitempty"`
-	ImageArtCrop  *string   `json:"image_art_crop,omitempty"`
+	// The section the card displays under; see domain.GroupColors.
+	GroupColors  int     `json:"group_colors"`
+	ImageNormal  *string `json:"image_normal,omitempty"`
+	ImageArtCrop *string `json:"image_art_crop,omitempty"`
 }
 
 // ListCubeCards returns a cube's active cards with the Scryfall fields the
@@ -103,7 +105,7 @@ type CubeCardView struct {
 func (s *Store) ListCubeCards(ctx context.Context, cubeID uuid.UUID) ([]CubeCardView, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT c.scryfall_id, c.name, c.slug, c.mana_cost, c.cmc, c.type_line,
-			c.color_identity, c.image_normal, c.image_art_crop
+			c.color_identity, c.image_normal, c.image_art_crop,`+groupColorCols+`
 		FROM cards c
 		JOIN cube_cards cc ON cc.card_id = c.scryfall_id
 		WHERE cc.cube_id = $1 AND cc.is_active
@@ -115,13 +117,57 @@ func (s *Store) ListCubeCards(ctx context.Context, cubeID uuid.UUID) ([]CubeCard
 	out := []CubeCardView{}
 	for rows.Next() {
 		var v CubeCardView
+		var g groupColorInputs
 		if err := rows.Scan(&v.ScryfallID, &v.Name, &v.Slug, &v.ManaCost, &v.CMC, &v.TypeLine,
-			&v.ColorIdentity, &v.ImageNormal, &v.ImageArtCrop); err != nil {
+			&v.ColorIdentity, &v.ImageNormal, &v.ImageArtCrop,
+			&g.colors, &g.oracleText, &g.produced); err != nil {
 			return nil, err
 		}
+		v.GroupColors = int(g.resolve(v.TypeLine, v.ColorIdentity))
 		out = append(out, v)
 	}
 	return out, rows.Err()
+}
+
+// The three columns domain.GroupColors needs beyond what a card view already
+// carries, as SELECTed by groupColorCols. Kept off the views themselves: the
+// oracle text of a whole cube would dwarf the rest of the payload, to say nothing
+// of the raw Scryfall blob two of these are extracted from.
+type groupColorInputs struct {
+	colors     []string
+	oracleText *string
+	produced   []string
+}
+
+// The `cards` row is aliased `c`, and may be all-NULL (an unresolved deck card
+// LEFT JOINs to nothing), so every expression here has to survive a NULL `raw`.
+//
+// Cost colors come from `raw`, not the `colors` column, because Scryfall omits
+// top-level `colors` on a double-faced card — they live per face — so the column
+// is 0 for every DFC and would file them all under Colorless. Fall back to the
+// union of the faces'. jsonb_array_elements is strict, so a card with no
+// `card_faces` yields no rows there and lands on the empty array.
+const groupColorCols = `
+	coalesce(
+		c.raw -> 'colors',
+		(SELECT jsonb_agg(col)
+		   FROM jsonb_array_elements(c.raw -> 'card_faces') AS f,
+		        jsonb_array_elements(f -> 'colors') AS col),
+		'[]'::jsonb),
+	c.oracle_text,
+	coalesce(c.raw -> 'produced_mana', '[]'::jsonb)`
+
+func (g groupColorInputs) resolve(typeLine *string, identity int) domain.ColorIdentity {
+	return domain.GroupColors(
+		deref(typeLine), deref(g.oracleText),
+		domain.ParseColorIdentity(g.colors), domain.ColorIdentity(identity), g.produced)
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // CardView is the full public view of a cached card, for the /cards/<slug> page.

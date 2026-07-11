@@ -97,6 +97,7 @@ export interface CubeCard {
   cmc?: number;
   type_line?: string;
   color_identity: number;
+  group_colors: number;
   image_normal?: string;
   image_art_crop?: string;
 }
@@ -137,6 +138,7 @@ export interface DecklistCard {
   cmc?: number;
   type_line?: string;
   color_identity?: number;
+  group_colors?: number;
 }
 export interface PublicUser {
   id: string;
