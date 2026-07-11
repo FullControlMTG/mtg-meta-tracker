@@ -4,6 +4,14 @@ networks:
   appnet:
     driver: bridge
 
+volumes:
+  # Downloaded Scryfall card images. A named volume rather than a bind mount:
+  # Docker seeds an empty named volume from the image's /data/images, ownership
+  # included, so it comes up owned by the backend's uid 10001 with no privileged
+  # chown step. A bind mount would be created root:root and the backend could not
+  # write to it. Survives `docker compose down` — only `down -v` clears it.
+  card-images:
+
 services:
   db:
     image: postgres:16-alpine
@@ -23,20 +31,6 @@ services:
       timeout: 3s
       retries: 10
 
-  # Docker creates a missing bind-mount source as root:root, but the backend runs
-  # as uid 10001 and has to write downloaded card images into it — so without this
-  # every image download fails with EACCES and the card endpoint 502s. Run-once
-  # (no restart policy); a no-op once the ownership is already correct.
-  images-init:
-    image: alpine:3.20
-    container_name: mtg-cube-images-init
-    user: "0:0"
-    volumes:
-      - /pwspool/software/mtg-meta-tracker/images:/data/images
-    command: chown -R 10001:10001 /data/images
-    networks:
-      - appnet
-
   backend:
     build:
       context: ./backend
@@ -49,12 +43,10 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/${POSTGRES_DB:?POSTGRES_DB is required}?sslmode=disable
       IMAGE_CACHE_DIR: /data/images
     volumes:
-      - /pwspool/software/mtg-meta-tracker/images:/data/images
+      - card-images:/data/images
     depends_on:
       db:
         condition: service_healthy
-      images-init:
-        condition: service_completed_successfully
     networks:
       - appnet
 

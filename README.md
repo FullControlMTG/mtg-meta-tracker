@@ -41,9 +41,9 @@ cd frontend && npm install && cd .. && make frontend
 Then sign in at http://localhost:3000 as that admin and paste a cube list at
 `/admin/cubes`; the pool is built from it in the background by a Scryfall sync job.
 
-Note that `docker-compose.yml` is the **production** deployment (Traefik, NAS bind
-mounts, no published DB port) and is not usable for local dev — `make db-up` uses
-`docker-compose.dev.yml` instead.
+Note that `docker-compose.yml` is the **production** deployment (Traefik, a NAS bind
+mount for Postgres, a Docker volume for the card-image cache, no published DB port)
+and is not usable for local dev — `make db-up` uses `docker-compose.dev.yml` instead.
 
 ## Auth
 
