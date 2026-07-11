@@ -17,6 +17,8 @@ type FanCard = {
   image_normal?: string;
   is_resolved?: boolean;
   quantity?: number;
+  set_code?: string;
+  collector_number?: string;
 };
 
 type Dims = { cols: number; cardW: number; cardH: number; strip: number };
@@ -37,10 +39,19 @@ function imageSrc(c: FanCard): string | undefined {
   return c.image_normal;
 }
 
+// Scryfall addresses a specific printing by set + collector number, which is what
+// we resolved the list against. Undefined for a card stored before printings were
+// resolved — it still renders, it just isn't clickable.
+function scryfallHref(c: FanCard): string | undefined {
+  if (!c.set_code || !c.collector_number) return undefined;
+  return `https://scryfall.com/card/${c.set_code}/${c.collector_number}`;
+}
+
 // Full-width, responsive, multi-column overlaid spread. The container is measured
 // and split into as many minCardW-wide columns as fit; cards fill sequentially down
 // each column, stacked with ~86% overlap so only each card's title strip peeks.
-// Hovering a card lifts it above its column siblings (see .fan-card in globals.css).
+// Hovering a card's strip lifts it above its column siblings to reveal it in full;
+// clicking opens that printing on Scryfall.
 export function CardFan({
   cards,
   maxCols = DEFAULT_MAX_COLS,
@@ -53,6 +64,10 @@ export function CardFan({
   const withArt = cards.filter((c) => c.is_resolved !== false && imageSrc(c));
   const containerRef = useRef<HTMLDivElement>(null);
   const [dims, setDims] = useState<Dims | null>(null);
+  // Which card is lifted, as "column-row". The lift has to happen on the wrapper:
+  // the wrapper's z-index is what a card's overlapping sibling competes with, and
+  // it opens a stacking context that would trap any z-index set on the image itself.
+  const [lifted, setLifted] = useState<string | null>(null);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -80,15 +95,10 @@ export function CardFan({
       {dims &&
         columns.map((col, ci) => (
           <div key={ci} style={{ width: dims.cardW, flexShrink: 0, position: "relative" }}>
-            {col.map((c, i) => (
-              <div
-                key={c.card_name}
-                style={{
-                  marginTop: i === 0 ? 0 : -(dims.cardH - dims.strip),
-                  position: "relative",
-                  zIndex: i,
-                }}
-              >
+            {col.map((c, i) => {
+              const key = `${ci}-${i}`;
+              const href = scryfallHref(c);
+              const img = (
                 <Image
                   className="fan-card"
                   src={imageSrc(c) as string}
@@ -100,17 +110,45 @@ export function CardFan({
                   // failure surface under a cold-cache burst). Go straight to the source.
                   unoptimized
                 />
-                {(c.quantity ?? 1) > 1 && (
-                  <span
-                    className="pill fan-qty"
-                    // Sits on the title strip — the only part of a stacked card still visible.
-                    style={{ top: dims.strip * 0.18, right: dims.cardW * 0.06 }}
-                  >
-                    ×{c.quantity}
-                  </span>
-                )}
-              </div>
-            ))}
+              );
+              return (
+                <div
+                  key={key}
+                  onMouseEnter={() => setLifted(key)}
+                  onMouseLeave={() => setLifted((k) => (k === key ? null : k))}
+                  style={{
+                    marginTop: i === 0 ? 0 : -(dims.cardH - dims.strip),
+                    position: "relative",
+                    zIndex: lifted === key ? withArt.length : i,
+                  }}
+                >
+                  {href ? (
+                    <a
+                      className="fan-link"
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={`${c.card_name} — view on Scryfall`}
+                      onFocus={() => setLifted(key)}
+                      onBlur={() => setLifted((k) => (k === key ? null : k))}
+                    >
+                      {img}
+                    </a>
+                  ) : (
+                    img
+                  )}
+                  {(c.quantity ?? 1) > 1 && (
+                    <span
+                      className="pill fan-qty"
+                      // Sits on the title strip — the only part of a stacked card still visible.
+                      style={{ top: dims.strip * 0.18, right: dims.cardW * 0.06 }}
+                    >
+                      ×{c.quantity}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ))}
     </div>

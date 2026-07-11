@@ -128,12 +128,17 @@ type DecklistCardView struct {
 	ColorIdentity *int `json:"color_identity,omitempty"`
 	// The section the card displays under; see domain.GroupColors.
 	GroupColors *int `json:"group_colors,omitempty"`
+	// The exact printing, as resolved from the decklist. Together they address
+	// the card on Scryfall (/card/{set}/{collector}).
+	SetCode         *string `json:"set_code,omitempty"`
+	CollectorNumber *string `json:"collector_number,omitempty"`
 }
 
 func (s *Store) GetDecklistCardsView(ctx context.Context, decklistID uuid.UUID) ([]DecklistCardView, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT dc.decklist_id, dc.card_id, dc.card_name, dc.quantity, dc.is_resolved, dc.board,
-			c.slug, c.image_art_crop, c.image_normal, c.cmc, c.type_line, c.color_identity,`+groupColorCols+`
+			c.slug, c.image_art_crop, c.image_normal, c.cmc, c.type_line, c.color_identity,
+			c.set_code, c.collector_number,`+groupColorCols+`
 		FROM decklist_cards dc
 		LEFT JOIN cards c ON c.scryfall_id = dc.card_id
 		WHERE dc.decklist_id=$1 ORDER BY dc.board, dc.card_name`, decklistID)
@@ -147,6 +152,7 @@ func (s *Store) GetDecklistCardsView(ctx context.Context, decklistID uuid.UUID) 
 		var g groupColorInputs
 		if err := rows.Scan(&v.DecklistID, &v.CardID, &v.CardName, &v.Quantity, &v.IsResolved, &v.Board,
 			&v.Slug, &v.ImageArtCrop, &v.ImageNormal, &v.CMC, &v.TypeLine, &v.ColorIdentity,
+			&v.SetCode, &v.CollectorNumber,
 			&g.colors, &g.oracleText, &g.produced); err != nil {
 			return nil, err
 		}

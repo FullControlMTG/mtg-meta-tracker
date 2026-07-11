@@ -102,6 +102,9 @@ export interface CubeCard {
   group_colors: number;
   image_normal?: string;
   image_art_crop?: string;
+  // The exact printing — addresses the card on Scryfall.
+  set_code?: string;
+  collector_number?: string;
 }
 
 export interface Decklist {
@@ -139,6 +142,9 @@ export interface DecklistCard {
   type_line?: string;
   color_identity?: number;
   group_colors?: number;
+  // The exact printing — addresses the card on Scryfall.
+  set_code?: string;
+  collector_number?: string;
 }
 export interface PublicUser {
   id: string;

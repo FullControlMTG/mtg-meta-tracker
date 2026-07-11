@@ -173,16 +173,29 @@ label {
   color: var(--muted);
 }
 
+/* The lift itself is the wrapper's z-index, set in CardFan — a z-index here would
+   open a stacking context on the image and get trapped inside that same wrapper.
+   These rules only carry the visual affordance. */
+.fan-link {
+  display: block;
+  border-radius: 12px;
+  text-decoration: none;
+}
+.fan-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .fan-card {
   transition: transform 0.12s ease;
   display: block;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
+.fan-link:hover .fan-card,
+.fan-link:focus-visible .fan-card,
 .fan-card:hover {
   transform: translateX(12px);
-  position: relative;
-  z-index: 999 !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
 /* Copy count, pinned to the title strip — the only slice of a stacked card left visible. */

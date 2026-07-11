@@ -125,6 +125,11 @@ type CubeCardView struct {
 	GroupColors  int     `json:"group_colors"`
 	ImageNormal  *string `json:"image_normal,omitempty"`
 	ImageArtCrop *string `json:"image_art_crop,omitempty"`
+	// The exact printing, as resolved from the cube list. Together they address
+	// the card on Scryfall (/card/{set}/{collector}); null on a row synced before
+	// printings were resolved.
+	SetCode         *string `json:"set_code,omitempty"`
+	CollectorNumber *string `json:"collector_number,omitempty"`
 }
 
 // ListCubeCards returns a cube's active cards with the Scryfall fields the
@@ -132,7 +137,8 @@ type CubeCardView struct {
 func (s *Store) ListCubeCards(ctx context.Context, cubeID uuid.UUID) ([]CubeCardView, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT c.scryfall_id, c.name, c.slug, c.mana_cost, c.cmc, c.type_line,
-			c.color_identity, c.image_normal, c.image_art_crop,`+groupColorCols+`
+			c.color_identity, c.image_normal, c.image_art_crop,
+			c.set_code, c.collector_number,`+groupColorCols+`
 		FROM cards c
 		JOIN cube_cards cc ON cc.card_id = c.scryfall_id
 		WHERE cc.cube_id = $1 AND cc.is_active
@@ -147,6 +153,7 @@ func (s *Store) ListCubeCards(ctx context.Context, cubeID uuid.UUID) ([]CubeCard
 		var g groupColorInputs
 		if err := rows.Scan(&v.ScryfallID, &v.Name, &v.Slug, &v.ManaCost, &v.CMC, &v.TypeLine,
 			&v.ColorIdentity, &v.ImageNormal, &v.ImageArtCrop,
+			&v.SetCode, &v.CollectorNumber,
 			&g.colors, &g.oracleText, &g.produced); err != nil {
 			return nil, err
 		}
