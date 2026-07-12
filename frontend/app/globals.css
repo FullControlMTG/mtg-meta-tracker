@@ -11,6 +11,10 @@
   --good: #0ca30c;
   --bad: #d03b3b;
   --radius: 10px;
+  /* Ring around anything filled with a mana color. The palette is MTG's own, so white is
+     a near-white and black is a near-black: each vanishes into one of the two surfaces,
+     and the ring is what keeps it a shape. */
+  --pip-ring: rgba(0, 0, 0, 0.4);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -24,6 +28,7 @@
     --border: rgba(255, 255, 255, 0.1);
     --accent: #3987e5;
     --accent-weak: #184f95;
+    --pip-ring: rgba(255, 255, 255, 0.5);
   }
 }
 
@@ -114,6 +119,42 @@ th.sortable {
 }
 th.sortable.active {
   color: var(--accent);
+}
+/* The sort control is a real button, so the header is operable from the keyboard —
+   stripped back to inherit the th's uppercase, muted, letter-spaced treatment. */
+th .th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+th .th-sort:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* Always in the layout, so activating a column never reflows the header row: invisible
+   at rest, faint on hover to preview the direction a first click would give. */
+.sort-caret {
+  font-size: 0.6em;
+  line-height: 1;
+  opacity: 0;
+}
+th.sortable:hover .sort-caret {
+  opacity: 0.45;
+}
+th.sortable.active .sort-caret {
+  opacity: 1;
+}
+tr.stat-row:hover {
+  background: var(--page);
 }
 td.num,
 th.num {
@@ -268,4 +309,46 @@ label {
   color: #fff;
   font-weight: 600;
   pointer-events: none;
+}
+
+/* The floating overlays — card art on a stats row, the radar's data-point tooltip. Both
+   are `fixed` so they escape the stats tables' `overflow-x: auto` wrapper, which would
+   clip an absolutely-positioned popover (see lib/hover.ts). Both are pointer-transparent:
+   an overlay that ate the pointer would fight the hover that summoned it. */
+.card-preview {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--grid); /* a card-shaped chip while the art loads, not a jump */
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.35);
+  line-height: 0;
+}
+.card-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.chart-tip {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 220px;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+.chart-tip strong {
+  color: var(--text);
+  font-weight: 600;
 }

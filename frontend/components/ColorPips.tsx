@@ -15,7 +15,7 @@ export function ColorPips({ bits, showCode = false }: { bits: number; showCode?:
               height: 13,
               borderRadius: "50%",
               background: c.hex,
-              border: "1px solid rgba(0,0,0,0.25)",
+              border: "1px solid var(--pip-ring)",
               display: "inline-block",
             }}
           />

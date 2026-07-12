@@ -1,6 +1,8 @@
 // WUBRG color-identity bitset helpers, mirroring backend/internal/domain/color.go
-// (W=1 U=2 B=4 R=8 G=16, colorless=0). Hexes are readable stand-ins for the MTG
-// pie tuned for contrast on both light and dark surfaces.
+// (W=1 U=2 B=4 R=8 G=16, colorless=0). The hexes are MTG's own pie, so white is a
+// near-white and black a near-black: each disappears into one of the two surfaces, and
+// every fill made from them wears a --pip-ring outline to stay a shape. Contrast lives
+// in that ring, not in the hex — don't "fix" a color by lightening it.
 
 export interface ManaColor {
   bit: number;
@@ -10,14 +12,14 @@ export interface ManaColor {
 }
 
 export const COLORS: ManaColor[] = [
-  { bit: 1, code: "W", name: "White", hex: "#c9a227" },
-  { bit: 2, code: "U", name: "Blue", hex: "#2a78d6" },
-  { bit: 4, code: "B", name: "Black", hex: "#6b6b6b" },
-  { bit: 8, code: "R", name: "Red", hex: "#e34948" },
-  { bit: 16, code: "G", name: "Green", hex: "#1baf7a" },
+  { bit: 1, code: "W", name: "White", hex: "#fffbe8" },
+  { bit: 2, code: "U", name: "Blue", hex: "#0e68ab" },
+  { bit: 4, code: "B", name: "Black", hex: "#150b00" },
+  { bit: 8, code: "R", name: "Red", hex: "#d3202a" },
+  { bit: 16, code: "G", name: "Green", hex: "#00733e" },
 ];
 
-const COLORLESS: ManaColor = { bit: 0, code: "C", name: "Colorless", hex: "#898781" };
+const COLORLESS: ManaColor = { bit: 0, code: "C", name: "Colorless", hex: "#c5c0b8" };
 
 export function identityString(bits: number): string {
   if (bits === 0) return "C";

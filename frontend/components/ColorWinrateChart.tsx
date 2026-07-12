@@ -37,6 +37,9 @@ export function ColorWinrateChart({ stats }: { stats: ColorStat[] }) {
                 style={{
                   width: `${Math.max(wr * 100, 1)}%`,
                   background: c.hex,
+                  // White's bar is near-white, black's near-black — the ring is what keeps
+                  // each a bar rather than a hole in the track.
+                  border: "1px solid var(--pip-ring)",
                   height: "100%",
                   borderRadius: 4,
                 }}

@@ -9,9 +9,8 @@ import {
 } from "@/lib/api";
 import { getCubes } from "@/lib/cube";
 import { COLORS } from "@/lib/colors";
-import { ColorPips } from "@/components/ColorPips";
+import { CardStatsTable } from "@/components/CardStatsTable";
 import { CubeSwitcher } from "@/components/CubeSwitcher";
-import { InfoHint } from "@/components/InfoHint";
 import { RadarChart, type RadarAxis } from "@/components/RadarChart";
 import { StatTile } from "@/components/StatTile";
 import { num, pct } from "@/lib/format";
@@ -28,24 +27,34 @@ const share = (count: number, total: number) => (total > 0 ? count / total : nul
 // is played. A 2-color deck counts on both of its axes, so the shares sum past 100%.
 function colorAxes(stats: ColorStat[], totalDecks: number): RadarAxis[] {
   const byKey = new Map(stats.filter((s) => s.facet === "single_color").map((s) => [s.facet_key, s]));
-  return COLORS.map((c) => ({
-    key: c.code,
-    label: c.name,
-    value: byKey.get(c.bit)?.deck_count ?? 0,
-    hex: c.hex,
-    sublabel: pct(share(byKey.get(c.bit)?.deck_count ?? 0, totalDecks), 0),
-  }));
+  return COLORS.map((c) => {
+    const decks = byKey.get(c.bit)?.deck_count ?? 0;
+    const s = share(decks, totalDecks);
+    return {
+      key: c.code,
+      label: c.name,
+      value: decks,
+      hex: c.hex,
+      share: s,
+      note: `${pct(s, 0)} of decks play ${c.name}`,
+    };
+  });
 }
 
 // The color_count facet: how many decks play 1, 2, 3, 4, or 5 colors.
 function colorCountAxes(stats: ColorStat[], totalDecks: number): RadarAxis[] {
   const byKey = new Map(stats.filter((s) => s.facet === "color_count").map((s) => [s.facet_key, s]));
-  return [1, 2, 3, 4, 5].map((n) => ({
-    key: String(n),
-    label: n === 1 ? "Mono" : `${n} colors`,
-    value: byKey.get(n)?.deck_count ?? 0,
-    sublabel: pct(share(byKey.get(n)?.deck_count ?? 0, totalDecks), 0),
-  }));
+  return [1, 2, 3, 4, 5].map((n) => {
+    const decks = byKey.get(n)?.deck_count ?? 0;
+    const s = share(decks, totalDecks);
+    return {
+      key: String(n),
+      label: n === 1 ? "Mono" : `${n} colors`,
+      value: decks,
+      share: s,
+      note: `${pct(s, 0)} of meta plays ${n === 1 ? "one color" : `${n} colors`}`,
+    };
+  });
 }
 
 export default async function CubeStatsPage({ params }: { params: { cube: string } }) {
@@ -104,7 +113,7 @@ export default async function CubeStatsPage({ params }: { params: { cube: string
               gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
             }}
           >
-            <StatTile value={String(meta!.total_games)} label="Games played" />
+            <StatTile value={String(meta!.total_games)} label="Total matches played" />
             <StatTile value={String(meta!.total_decks)} label="Decks recorded" />
             <StatTile value={num(meta!.avg_cmc)} label="Avg. mana value" />
           </div>
@@ -117,10 +126,10 @@ export default async function CubeStatsPage({ params }: { params: { cube: string
             }}
           >
             <section className="card">
-              <h2>Color usage</h2>
+              <h2>Color Breakdown</h2>
               <p className="muted" style={{ marginTop: "-0.25rem" }}>
-                Decks playing each color, and the share of all decks that is. Multicolor
-                decks count on every color they play, so the shares sum past 100%.
+                Breakdown of which colors are played among recorded decks. Multicolored
+                lists count for each color.
               </p>
               <RadarChart
                 axes={colorAxes(colorStats, meta!.total_decks)}
@@ -129,10 +138,9 @@ export default async function CubeStatsPage({ params }: { params: { cube: string
             </section>
 
             <section className="card">
-              <h2>Deck color count</h2>
+              <h2>Deck Colors</h2>
               <p className="muted" style={{ marginTop: "-0.25rem" }}>
-                How many colors decks commit to, and the share of the meta each bracket
-                holds.
+                How many colors decks commit to one or more colors.
               </p>
               <RadarChart
                 axes={colorCountAxes(colorStats, meta!.total_decks)}
@@ -148,54 +156,7 @@ export default async function CubeStatsPage({ params }: { params: { cube: string
                 Most played first. Basic lands excluded — every deck plays them.
               </p>
             </div>
-            <div style={{ overflowX: "auto" }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Card</th>
-                    <th className="num">Decks</th>
-                    <th className="num">
-                      Incl.
-                      <InfoHint text="Share of decks in this cube that play the card." />
-                    </th>
-                    <th className="num">
-                      WR
-                      <InfoHint text="Winrate of the decks playing this card." />
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cardStats.map((c) => (
-                    <tr key={c.card_id}>
-                      <td>
-                        <Link
-                          href={`/cards/${c.slug}?cube=${cubeId}`}
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 6,
-                            color: "var(--text)",
-                          }}
-                        >
-                          <ColorPips bits={c.color_identity} />
-                          {c.name}
-                        </Link>
-                      </td>
-                      <td className="num">{c.deck_count}</td>
-                      <td className="num">{pct(c.inclusion_rate, 0)}</td>
-                      <td className="num">{pct(c.winrate)}</td>
-                    </tr>
-                  ))}
-                  {cardStats.length === 0 && (
-                    <tr>
-                      <td colSpan={4} className="muted">
-                        No cards in analyzed decks.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <CardStatsTable cards={cardStats} cubeId={cubeId} />
           </section>
         </>
       )}
