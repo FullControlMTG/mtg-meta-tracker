@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 const DEFAULT_MIN_CARD_W = 200; // minimum readable card width in px → drives column count
 const DEFAULT_MAX_COLS = 8; // a cube section holds far more cards than a deck; more columns → shorter
 const CARD_RATIO = 88 / 63; // MTG card aspect ratio (height / width)
-const PEEK_RATIO = 0.14; // fraction of a stacked card's height left visible (its title strip)
+const PEEK_RATIO = 0.19; // fraction of a stacked card's height left visible (title strip + a sliver of art)
 
 // Minimal shape shared by DecklistCard and CubeCard. is_resolved is optional —
 // cube cards are always resolved, so treat a missing flag as resolved. quantity is
@@ -49,7 +49,8 @@ function scryfallHref(c: FanCard): string | undefined {
 
 // Full-width, responsive, multi-column overlaid spread. The container is measured
 // and split into as many minCardW-wide columns as fit; cards fill sequentially down
-// each column, stacked with ~86% overlap so only each card's title strip peeks.
+// each column, stacked with ~81% overlap so each card's title strip and a glimpse of
+// its art peek out.
 // Hovering a card's strip lifts it above its column siblings to reveal it in full;
 // clicking opens that printing on Scryfall.
 export function CardFan({

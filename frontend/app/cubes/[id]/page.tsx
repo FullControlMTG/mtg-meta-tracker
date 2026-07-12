@@ -49,7 +49,15 @@ export default async function CubeDetailPage({ params }: { params: { id: string 
           This cube has no cards yet.
         </p>
       ) : (
-        <div style={{ marginTop: "1.5rem", display: "flex", flexDirection: "column", gap: "2.5rem" }}>
+        <div
+          style={{
+            maxWidth: 1040,
+            margin: "1.5rem auto 0",
+            display: "flex",
+            flexDirection: "column",
+            gap: "2.5rem",
+          }}
+        >
           {groups.map((g) => (
             <section key={g.key}>
               <h2 style={{ textTransform: "uppercase", letterSpacing: "0.03em", fontSize: "1rem" }}>
