@@ -125,6 +125,9 @@ export interface Decklist {
   name: string;
   description?: string;
   color_identity: number;
+  // The colors the deck only splashes (under 10% of its nonlands). Disjoint from
+  // color_identity, and left out of the meta's color analytics.
+  splash_colors: number;
   archetype?: Archetype;
   source_url?: string;
   decklist_raw: string;
@@ -252,6 +255,7 @@ export interface DeckBrief {
   id: string;
   name: string;
   color_identity: number;
+  splash_colors: number;
   quantity: number;
   games_played: number;
   wins: number;
@@ -276,6 +280,8 @@ export interface CardDetail {
 export interface InferResult {
   color_identity: number;
   color_string: string;
+  splash_colors: number;
+  splash_string: string;
   resolved: string[] | null;
   unresolved: string[] | null;
 }

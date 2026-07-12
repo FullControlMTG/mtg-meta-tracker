@@ -94,6 +94,7 @@ func aggregate(decks []model.DeckRow, cards []model.DeckCardRow) *model.Results 
 	exact := map[int]*acc{}
 	single := map[int]*acc{}
 	countFacet := map[int]*acc{}
+	splash := map[int]*acc{}
 	cardAgg := map[uuid.UUID]*acc{}
 	pairAggs := map[[2]uuid.UUID]*pairAcc{}
 	cmcBucket := map[string]*acc{}
@@ -117,6 +118,11 @@ func aggregate(decks []model.DeckRow, cards []model.DeckCardRow) *model.Results 
 		for _, bit := range singleColorBits {
 			if d.ColorIdent&bit != 0 {
 				getAcc(single, bit).add(d)
+			}
+			// A splashed color is not one of the deck's colors, so it stays out of
+			// every facet above and is only counted here.
+			if d.SplashIdent&bit != 0 {
+				getAcc(splash, bit).add(d)
 			}
 		}
 		getAcc(countFacet, cc).add(d)
@@ -169,6 +175,7 @@ func aggregate(decks []model.DeckRow, cards []model.DeckCardRow) *model.Results 
 		"exact_identity": exact,
 		"single_color":   single,
 		"color_count":    countFacet,
+		"splash_color":   splash,
 	} {
 		for key, a := range m {
 			res.ColorStats = append(res.ColorStats, model.ColorStatRow{

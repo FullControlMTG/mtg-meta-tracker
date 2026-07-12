@@ -25,10 +25,12 @@ func NewResolver(s *store.Store, scry *scryfall.Client) *Resolver {
 }
 
 // Resolved is the outcome of resolving a raw list: the rows to persist plus the
-// inferred deck color identity and the names that could not be resolved.
+// inferred deck colors (the ones it is built on, and the ones it splashes) and the
+// names that could not be resolved.
 type Resolved struct {
 	Cards         []domain.DecklistCard
 	ColorIdentity int
+	SplashColors  int
 	Unresolved    []string
 }
 
@@ -105,9 +107,9 @@ func (r *Resolver) Resolve(ctx context.Context, cubeID uuid.UUID, parsed []Parse
 		}
 	}
 
-	// 3. Build rows + infer deck identity from resolved main-board cards.
+	// 3. Build rows + infer deck colors from resolved main-board cards.
 	res := &Resolved{Cards: make([]domain.DecklistCard, 0, len(parsed))}
-	var identities []domain.ColorIdentity
+	var colorCards []domain.DeckColorCard
 	for i, p := range parsed {
 		dc := domain.DecklistCard{
 			CardName: p.Name,
@@ -119,7 +121,11 @@ func (r *Resolver) Resolve(ctx context.Context, cubeID uuid.UUID, parsed []Parse
 			dc.CardID = &id
 			dc.IsResolved = true
 			if p.Board == domain.BoardMain {
-				identities = append(identities, domain.ColorIdentity(c.ColorIdentity))
+				colorCards = append(colorCards, domain.DeckColorCard{
+					Colors:   domain.ColorIdentity(c.Colors),
+					IsLand:   c.TypeLine != nil && domain.IsLandType(*c.TypeLine),
+					Quantity: p.Quantity,
+				})
 			}
 		} else {
 			res.Unresolved = append(res.Unresolved, p.Name)
@@ -130,7 +136,9 @@ func (r *Resolver) Resolve(ctx context.Context, cubeID uuid.UUID, parsed []Parse
 		log.Printf("decklist: cube %s: %d of %d entries unresolved: %v",
 			cubeID, len(res.Unresolved), len(parsed), res.Unresolved)
 	}
-	res.ColorIdentity = int(domain.InferDeckIdentity(identities))
+	dc := domain.InferDeckColors(colorCards)
+	res.ColorIdentity = int(dc.Main)
+	res.SplashColors = int(dc.Splash)
 	return res, nil
 }
 

@@ -329,3 +329,14 @@ ALTER TABLE card_pair_stats DROP COLUMN IF EXISTS lift;
 ALTER TABLE card_pair_stats DROP COLUMN IF EXISTS support;
 ALTER TABLE card_pair_stats DROP COLUMN IF EXISTS confidence_ab;
 CREATE INDEX IF NOT EXISTS idx_pair_stats_a ON card_pair_stats(run_id, card_a_id, co_count DESC);
+
+-- Deck colors are now inferred from what a list *casts* (the colors in the costs of
+-- its nonland cards), not from the color identity of everything in it — a Mox
+-- Sapphire no longer makes a deck blue. A color on fewer than 10% of the nonlands is
+-- a splash, held apart from the deck's real colors and out of the main analytics; it
+-- gets its own bitset and its own color_stats facet. Existing rows are recomputed by
+-- the analytics job, so no data migration is needed here.
+ALTER TABLE decklists ADD COLUMN IF NOT EXISTS splash_colors smallint NOT NULL DEFAULT 0;
+ALTER TABLE color_stats DROP CONSTRAINT IF EXISTS color_stats_facet_check;
+ALTER TABLE color_stats ADD CONSTRAINT color_stats_facet_check
+    CHECK (facet IN ('exact_identity','single_color','color_count','splash_color'));

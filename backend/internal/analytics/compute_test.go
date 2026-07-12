@@ -129,6 +129,46 @@ func TestAggregateColorFacets(t *testing.T) {
 	}
 }
 
+// A splashed color is not one of the deck's colors: it is counted on the splash
+// facet and nowhere else, so a WU deck splashing black stays a two-color WU deck
+// in the meta rather than becoming a three-color one.
+func TestAggregateSplashFacet(t *testing.T) {
+	deck := uuid.New()
+	decks := []model.DeckRow{
+		{ID: deck, ColorIdent: 3, SplashIdent: 4, Games: 2, Wins: 1, Losses: 1},
+	}
+	r := aggregate(decks, nil)
+
+	facets := map[string]map[int]model.ColorStatRow{}
+	for _, c := range r.ColorStats {
+		if facets[c.Facet] == nil {
+			facets[c.Facet] = map[int]model.ColorStatRow{}
+		}
+		facets[c.Facet][c.FacetKey] = c
+	}
+	if b := facets["splash_color"][4]; b.DeckCount != 1 || b.Winrate == nil || *b.Winrate != 0.5 {
+		t.Fatalf("splash_color B: deck_count=%d winrate=%v", b.DeckCount, b.Winrate)
+	}
+	if _, ok := facets["splash_color"][1]; ok {
+		t.Fatal("W is one of the deck's colors, not a splash")
+	}
+	if b, ok := facets["single_color"][4]; ok {
+		t.Fatalf("splashed B leaked into single_color: %+v", b)
+	}
+	if _, ok := facets["exact_identity"][7]; ok {
+		t.Fatal("splashed B leaked into exact_identity (WUB)")
+	}
+	if cc := facets["color_count"][3]; cc.DeckCount != 0 {
+		t.Fatalf("splashed B made the deck three colors: %+v", cc)
+	}
+	if cc := facets["color_count"][2]; cc.DeckCount != 1 {
+		t.Fatalf("deck should count as two colors, got %+v", cc)
+	}
+	if r.Meta.AvgColorCount == nil || *r.Meta.AvgColorCount != 2 {
+		t.Fatalf("avg_color_count = %v, want 2", r.Meta.AvgColorCount)
+	}
+}
+
 func typeLine(v string) *string { return &v }
 
 // A realistic deck is mostly basics by copy count. They must not reach the card

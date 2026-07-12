@@ -74,7 +74,8 @@ func (s *Store) LookupCubeCardsByName(ctx context.Context, cubeID uuid.UUID, nam
 		lowered = append(lowered, strings.ToLower(n), strings.ToLower(FrontFace(n)))
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT c.scryfall_id, c.name, c.cmc, c.color_identity, c.raw->>'flavor_name'
+		SELECT c.scryfall_id, c.name, c.cmc, c.color_identity, c.type_line,
+			c.raw->>'flavor_name',`+castColorCol+`
 		FROM cards c
 		JOIN cube_cards cc ON cc.card_id = c.scryfall_id
 		WHERE cc.cube_id = $1 AND cc.is_active AND (
@@ -89,9 +90,12 @@ func (s *Store) LookupCubeCardsByName(ctx context.Context, cubeID uuid.UUID, nam
 	for rows.Next() {
 		var c domain.Card
 		var flavor *string
-		if err := rows.Scan(&c.ScryfallID, &c.Name, &c.CMC, &c.ColorIdentity, &flavor); err != nil {
+		var colors []string
+		if err := rows.Scan(&c.ScryfallID, &c.Name, &c.CMC, &c.ColorIdentity, &c.TypeLine,
+			&flavor, &colors); err != nil {
 			return nil, err
 		}
+		c.Colors = int(domain.ParseColorIdentity(colors))
 		out[strings.ToLower(c.Name)] = c
 		out[strings.ToLower(FrontFace(c.Name))] = c
 		if flavor != nil && *flavor != "" {
@@ -173,21 +177,25 @@ type groupColorInputs struct {
 	produced   []string
 }
 
-// The `cards` row is aliased `c`, and may be all-NULL (an unresolved deck card
-// LEFT JOINs to nothing), so every expression here has to survive a NULL `raw`.
+// The colors of a card's casting cost, for a `cards` row aliased `c` that may be
+// all-NULL (an unresolved deck card LEFT JOINs to nothing).
 //
-// Cost colors come from `raw`, not the `colors` column, because Scryfall omits
-// top-level `colors` on a double-faced card — they live per face — so the column
-// is 0 for every DFC and would file them all under Colorless. Fall back to the
-// union of the faces'. jsonb_array_elements is strict, so a card with no
-// `card_faces` yields no rows there and lands on the empty array.
-const groupColorCols = `
+// Read from `raw` rather than the `colors` column because Scryfall omits top-level
+// `colors` on a double-faced card — they live per face — so the column is 0 for
+// every DFC written before that was handled at ingest, and reading it would file
+// them all under Colorless. Fall back to the union of the faces'.
+// jsonb_array_elements is strict, so a card with no `card_faces` yields no rows
+// there and lands on the empty array.
+const castColorCol = `
 	coalesce(
 		c.raw -> 'colors',
 		(SELECT jsonb_agg(col)
 		   FROM jsonb_array_elements(c.raw -> 'card_faces') AS f,
 		        jsonb_array_elements(f -> 'colors') AS col),
-		'[]'::jsonb),
+		'[]'::jsonb)`
+
+// The three columns domain.GroupColors needs beyond a card view's own fields.
+const groupColorCols = castColorCol + `,
 	c.oracle_text,
 	coalesce(c.raw -> 'produced_mana', '[]'::jsonb)`
 
@@ -249,6 +257,7 @@ type DeckBrief struct {
 	ID            uuid.UUID `json:"id"`
 	Name          string    `json:"name"`
 	ColorIdentity int       `json:"color_identity"`
+	SplashColors  int       `json:"splash_colors"`
 	Quantity      int       `json:"quantity"`
 	GamesPlayed   int       `json:"games_played"`
 	Wins          int       `json:"wins"`
@@ -262,7 +271,7 @@ type DeckBrief struct {
 // so this is cheap and always fresh even between analytics runs.
 func (s *Store) ListDecksWithCard(ctx context.Context, cubeID, cardID uuid.UUID) ([]DeckBrief, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT d.id, d.name, d.color_identity, dc.quantity,
+		SELECT d.id, d.name, d.color_identity, d.splash_colors, dc.quantity,
 			d.games_played, d.wins, d.losses, d.winrate, u.username
 		FROM decklist_cards dc
 		JOIN decklists d ON d.id = dc.decklist_id
@@ -277,7 +286,7 @@ func (s *Store) ListDecksWithCard(ctx context.Context, cubeID, cardID uuid.UUID)
 	out := []DeckBrief{}
 	for rows.Next() {
 		var d DeckBrief
-		if err := rows.Scan(&d.ID, &d.Name, &d.ColorIdentity, &d.Quantity,
+		if err := rows.Scan(&d.ID, &d.Name, &d.ColorIdentity, &d.SplashColors, &d.Quantity,
 			&d.GamesPlayed, &d.Wins, &d.Losses, &d.Winrate, &d.Owner); err != nil {
 			return nil, err
 		}

@@ -74,7 +74,7 @@ export function DeckTable({
               )}
             </td>
             <td>
-              <ColorPips bits={d.color_identity} showCode />
+              <ColorPips bits={d.color_identity} splash={d.splash_colors} showCode />
             </td>
             <td className="num">{d.games_played > 0 ? `${d.wins}-${d.losses}` : "—"}</td>
             <td className="num">{pct(d.winrate)}</td>

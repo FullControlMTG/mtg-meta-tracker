@@ -218,7 +218,7 @@ export default async function CardPage({
                       {d.owner && <span className="muted"> · {d.owner}</span>}
                     </td>
                     <td>
-                      <ColorPips bits={d.color_identity} />
+                      <ColorPips bits={d.color_identity} splash={d.splash_colors} />
                     </td>
                     <td className="num">{d.quantity}</td>
                     <td className="num">

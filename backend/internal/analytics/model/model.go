@@ -5,13 +5,16 @@ package model
 
 import "github.com/google/uuid"
 
-// DeckRow is a decklist loaded for analytics (record fields + color identity).
+// DeckRow is a decklist loaded for analytics (record fields + colors). ColorIdent
+// is the deck's real colors and SplashIdent the ones it only splashes; they are
+// disjoint, and only the former feeds the color facets.
 type DeckRow struct {
-	ID         uuid.UUID
-	ColorIdent int
-	Games      int
-	Wins       int
-	Losses     int
+	ID          uuid.UUID
+	ColorIdent  int
+	SplashIdent int
+	Games       int
+	Wins        int
+	Losses      int
 }
 
 // DeckCardRow is one resolved main-board card belonging to a deck. TypeLine is

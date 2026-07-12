@@ -104,13 +104,93 @@ func TestGroupColors(t *testing.T) {
 	}
 }
 
-func TestInferDeckIdentity(t *testing.T) {
-	deck := InferDeckIdentity([]ColorIdentity{
-		ParseColorIdentity([]string{"W"}),
-		ParseColorIdentity([]string{"U"}),
-		ParseColorIdentity(nil),
-	})
-	if deck.String() != "WU" {
-		t.Fatalf("deck identity = %q want WU", deck.String())
+// nonland/land build a DeckColorCard from the color letters of a card's cost.
+func nonland(qty int, cost ...string) DeckColorCard {
+	return DeckColorCard{Colors: ParseColorIdentity(cost), IsLand: false, Quantity: qty}
+}
+
+func land(qty int, produces ...string) DeckColorCard {
+	// A land's own cost is colorless; the colors it taps for are deliberately not
+	// its `colors`, which is exactly the point of the land flag.
+	_ = produces
+	return DeckColorCard{Colors: 0, IsLand: true, Quantity: qty}
+}
+
+func TestInferDeckColors(t *testing.T) {
+	cases := []struct {
+		name       string
+		cards      []DeckColorCard
+		wantMain   string
+		wantSplash string
+	}{{
+		// The reported bug: a Mox Sapphire taps for blue and a Hallowed Fountain is
+		// blue in identity, but the deck never casts a blue card.
+		name: "mana that produces blue does not make a deck blue",
+		cards: []DeckColorCard{
+			nonland(10, "G"), nonland(10, "W"), nonland(2), // 2 colorless artifacts
+			nonland(1),        // Mox Sapphire: colorless cost
+			land(4), land(13), // Hallowed Fountain, basics
+		},
+		wantMain: "WG", wantSplash: "C",
+	}, {
+		name: "a color under 10% of the nonlands is a splash",
+		cards: []DeckColorCard{
+			nonland(13, "G"), nonland(10, "W"), nonland(2, "R"), land(17),
+		},
+		wantMain: "WG", wantSplash: "R",
+	}, {
+		name: "a color at exactly 10% of the nonlands is not a splash",
+		cards: []DeckColorCard{
+			nonland(18, "U"), nonland(2, "B"), land(17),
+		},
+		wantMain: "UB", wantSplash: "C",
+	}, {
+		// Copies count, so 4 Lightning Bolts are 4 red cards, not one.
+		name: "quantity is weighted",
+		cards: []DeckColorCard{
+			nonland(30, "G"), nonland(4, "R"), land(17),
+		},
+		wantMain: "RG", wantSplash: "C",
+	}, {
+		name: "a gold card counts for each of its colors",
+		cards: []DeckColorCard{
+			nonland(10, "W", "U"), nonland(10, "U"), land(17),
+		},
+		wantMain: "WU", wantSplash: "C",
+	}, {
+		// Nothing clears 10% of a 40-card artifact deck, but it is not a colorless
+		// deck: its best-represented color is promoted rather than splashed away.
+		name: "the top color is promoted when nothing clears the bar",
+		cards: []DeckColorCard{
+			nonland(36), nonland(3, "W"), nonland(1, "U"), land(17),
+		},
+		wantMain: "W", wantSplash: "U",
+	}, {
+		name: "a tie promotes both colors",
+		cards: []DeckColorCard{
+			nonland(36), nonland(2, "W"), nonland(2, "R"),
+		},
+		wantMain: "WR", wantSplash: "C",
+	}, {
+		name:     "a deck of nothing but lands is colorless",
+		cards:    []DeckColorCard{land(40)},
+		wantMain: "C", wantSplash: "C",
+	}, {
+		name:     "no cards at all",
+		cards:    nil,
+		wantMain: "C", wantSplash: "C",
+	}}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := InferDeckColors(tc.cards)
+			if got.Main.String() != tc.wantMain || got.Splash.String() != tc.wantSplash {
+				t.Fatalf("main/splash = %q/%q want %q/%q",
+					got.Main.String(), got.Splash.String(), tc.wantMain, tc.wantSplash)
+			}
+			if got.Main&got.Splash != 0 {
+				t.Fatalf("main %q and splash %q overlap", got.Main, got.Splash)
+			}
+		})
 	}
 }

@@ -41,6 +41,25 @@ function colorAxes(stats: ColorStat[], totalDecks: number): RadarAxis[] {
   });
 }
 
+// The splash_color facet: how often each color is splashed rather than played —
+// on fewer than 10% of a deck's nonlands. A splash is not one of the deck's colors,
+// so these decks are absent from that color's axis on the breakdown above.
+function splashAxes(stats: ColorStat[], totalDecks: number): RadarAxis[] {
+  const byKey = new Map(stats.filter((s) => s.facet === "splash_color").map((s) => [s.facet_key, s]));
+  return COLORS.map((c) => {
+    const decks = byKey.get(c.bit)?.deck_count ?? 0;
+    const s = share(decks, totalDecks);
+    return {
+      key: c.code,
+      label: c.name,
+      value: decks,
+      hex: c.hex,
+      share: s,
+      note: `${pct(s, 0)} of decks splash ${c.name}`,
+    };
+  });
+}
+
 // The color_count facet: how many decks play 1, 2, 3, 4, or 5 colors.
 function colorCountAxes(stats: ColorStat[], totalDecks: number): RadarAxis[] {
   const byKey = new Map(stats.filter((s) => s.facet === "color_count").map((s) => [s.facet_key, s]));
@@ -145,6 +164,19 @@ export default async function CubeStatsPage({ params }: { params: { cube: string
               <RadarChart
                 axes={colorCountAxes(colorStats, meta!.total_decks)}
                 caption="Decks by number of colors played, one through five"
+              />
+            </section>
+
+            <section className="card">
+              <h2>Splashed Colors</h2>
+              <p className="muted" style={{ marginTop: "-0.25rem" }}>
+                Which colors get splashed rather than built on — a color on fewer than
+                10% of a deck&apos;s nonland cards. Splashes are left out of the
+                breakdown above.
+              </p>
+              <RadarChart
+                axes={splashAxes(colorStats, meta!.total_decks)}
+                caption="Decks splashing each color of the WUBRG pie"
               />
             </section>
           </div>

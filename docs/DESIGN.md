@@ -308,15 +308,29 @@ Admin/ops: `POST /api/admin/cube/sync`, `POST /api/admin/analytics/recompute`.
 
 ---
 
-## 8. Color-identity inference
+## 8. Deck color inference
 
 `POST /api/decklists/infer-colors` (and on save): parse the raw list → resolve
-names to `cards` → OR together each card's `color_identity` bitset → deck
-identity. The `decks/new` page calls this live as the user pastes.
+names to `cards` → `domain.InferDeckColors` over the main board. The `decks/new`
+page calls this live as the user pastes.
 
-The inference sits behind a strategy interface so it can grow: today a simple OR;
-later, splash detection (weight by pip counts), ignoring off-color hybrid,
-land-vs-spell handling, etc.
+A deck's colors come from what it **casts**, not from what it can tap for. Only
+nonland cards count, and they count by the colors of their casting cost (Scryfall
+`colors`), never their `color_identity`. Color identity includes mana a card
+*produces*, which is how ORing it over every card — the original rule — made a
+Selesnya deck running a Mox Sapphire or a Hallowed Fountain come out blue.
+
+A color on fewer than 10% of the deck's nonland cards (`domain.SplashThreshold`,
+counting copies) is a **splash**: stored apart in `decklists.splash_colors`, kept
+out of `color_identity`, and excluded from every color analytic except its own
+`splash_color` facet — so a GW deck with two red cards stays a two-color deck. A
+deck that plays colored cards is never colorless, so when nothing clears the
+threshold the best-represented color is promoted rather than splashed away.
+
+Colors are inferred at save time, so the rule that inferred them can drift from the
+current one. `store.RecomputeDeckColors` re-derives every deck in a cube from the
+cached `cards` rows, and the analytics job runs it before aggregating; a deck saved
+under an older rule converges on the next run without a data migration.
 
 ---
 

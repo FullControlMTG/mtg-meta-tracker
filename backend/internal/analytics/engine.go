@@ -32,6 +32,18 @@ func (e *Engine) Recompute(ctx context.Context, cubeID uuid.UUID, trigger string
 		return err
 	}
 
+	// Deck colors are inferred at save time, so a deck saved under an older rule
+	// carries an older answer. Re-derive them first and every run aggregates the
+	// colors the current rule would give.
+	changed, err := e.store.RecomputeDeckColors(ctx, cubeID)
+	if err != nil {
+		_ = e.store.SetAnalyticsRunFailed(ctx, runID)
+		return err
+	}
+	if changed > 0 {
+		log.Printf("analytics: cube %s: recomputed colors for %d deck(s)", cubeID, changed)
+	}
+
 	decks, err := e.store.LoadDecksForAnalytics(ctx, cubeID)
 	if err != nil {
 		_ = e.store.SetAnalyticsRunFailed(ctx, runID)

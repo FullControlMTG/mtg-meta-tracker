@@ -106,11 +106,14 @@ type Decklist struct {
 	Name          string    `json:"name"`
 	Description   *string   `json:"description,omitempty"`
 	ColorIdentity int       `json:"color_identity"`
-	Archetype     *string   `json:"archetype,omitempty"`
-	SourceURL     *string   `json:"source_url,omitempty"`
-	DecklistRaw   string    `json:"decklist_raw"`
-	CardCount     int       `json:"card_count"`
-	Status        string    `json:"status"`
+	// The colors the deck merely splashes (see domain.InferDeckColors); disjoint
+	// from ColorIdentity, and excluded from the meta's color analytics.
+	SplashColors int     `json:"splash_colors"`
+	Archetype    *string `json:"archetype,omitempty"`
+	SourceURL    *string `json:"source_url,omitempty"`
+	DecklistRaw  string  `json:"decklist_raw"`
+	CardCount    int     `json:"card_count"`
+	Status       string  `json:"status"`
 
 	// Record (nullable / added after the fact).
 	GamesPlayed     int        `json:"games_played"`

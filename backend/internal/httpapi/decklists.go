@@ -24,9 +24,10 @@ func (s *Server) enqueueRecompute(r *http.Request, cubeID uuid.UUID, trigger str
 func (s *Server) decklistView(r *http.Request, d *domain.Decklist) map[string]any {
 	cards, _ := s.store.GetDecklistCardsView(r.Context(), d.ID)
 	view := map[string]any{
-		"decklist":     d,
-		"color_string": domain.ColorIdentity(d.ColorIdentity).String(),
-		"cards":        cards,
+		"decklist":      d,
+		"color_string":  domain.ColorIdentity(d.ColorIdentity).String(),
+		"splash_string": domain.ColorIdentity(d.SplashColors).String(),
+		"cards":         cards,
 	}
 	if u, err := s.store.GetUserByID(r.Context(), d.UserID); err == nil {
 		view["user"] = u.Public()
@@ -115,8 +116,9 @@ func (s *Server) handleListDecklists(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]any, len(decks))
 	for i := range decks {
 		out[i] = map[string]any{
-			"decklist":     decks[i],
-			"color_string": domain.ColorIdentity(decks[i].ColorIdentity).String(),
+			"decklist":      decks[i],
+			"color_string":  domain.ColorIdentity(decks[i].ColorIdentity).String(),
+			"splash_string": domain.ColorIdentity(decks[i].SplashColors).String(),
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -198,6 +200,7 @@ func (s *Server) handleCreateDecklist(w http.ResponseWriter, r *http.Request) {
 		UserID:        ownerID,
 		Name:          req.Name,
 		ColorIdentity: resolved.ColorIdentity,
+		SplashColors:  resolved.SplashColors,
 		DecklistRaw:   req.DecklistRaw,
 		CardCount:     countMain(resolved.Cards),
 		Status:        status,
@@ -322,6 +325,7 @@ func (s *Server) handlePatchDecklist(w http.ResponseWriter, r *http.Request) {
 		}
 		d.DecklistRaw = *req.DecklistRaw
 		d.ColorIdentity = resolved.ColorIdentity
+		d.SplashColors = resolved.SplashColors
 		d.CardCount = countMain(resolved.Cards)
 		cards = resolved.Cards
 		unresolved = resolved.Unresolved
@@ -436,6 +440,8 @@ func (s *Server) handleInferColors(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"color_identity": resolved.ColorIdentity,
 		"color_string":   domain.ColorIdentity(resolved.ColorIdentity).String(),
+		"splash_colors":  resolved.SplashColors,
+		"splash_string":  domain.ColorIdentity(resolved.SplashColors).String(),
 		"resolved":       resolvedNames,
 		"unresolved":     resolved.Unresolved,
 	})

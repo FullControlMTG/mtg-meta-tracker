@@ -10,7 +10,7 @@ import (
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
 )
 
-const decklistCols = `id, cube_id, user_id, name, description, color_identity, archetype,
+const decklistCols = `id, cube_id, user_id, name, description, color_identity, splash_colors, archetype,
 	source_url, decklist_raw, card_count, status,
 	games_played, wins, losses, event_name, played_at, record_updated_at,
 	winrate, created_at, updated_at`
@@ -18,7 +18,7 @@ const decklistCols = `id, cube_id, user_id, name, description, color_identity, a
 func scanDecklist(row pgx.Row) (*domain.Decklist, error) {
 	var d domain.Decklist
 	err := row.Scan(&d.ID, &d.CubeID, &d.UserID, &d.Name, &d.Description, &d.ColorIdentity,
-		&d.Archetype, &d.SourceURL, &d.DecklistRaw, &d.CardCount, &d.Status,
+		&d.SplashColors, &d.Archetype, &d.SourceURL, &d.DecklistRaw, &d.CardCount, &d.Status,
 		&d.GamesPlayed, &d.Wins, &d.Losses, &d.EventName,
 		&d.PlayedAt, &d.RecordUpdatedAt, &d.Winrate, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
@@ -61,11 +61,11 @@ func (s *Store) CreateDecklist(ctx context.Context, d *domain.Decklist, cards []
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	err = tx.QueryRow(ctx, `
-		INSERT INTO decklists (cube_id, user_id, name, description, color_identity, archetype,
-			source_url, decklist_raw, card_count, status)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+		INSERT INTO decklists (cube_id, user_id, name, description, color_identity, splash_colors,
+			archetype, source_url, decklist_raw, card_count, status)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 		RETURNING id, winrate, created_at, updated_at`,
-		d.CubeID, d.UserID, d.Name, d.Description, d.ColorIdentity, d.Archetype,
+		d.CubeID, d.UserID, d.Name, d.Description, d.ColorIdentity, d.SplashColors, d.Archetype,
 		d.SourceURL, d.DecklistRaw, d.CardCount, d.Status,
 	).Scan(&d.ID, &d.Winrate, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
@@ -195,10 +195,10 @@ func (s *Store) UpdateDecklist(ctx context.Context, d *domain.Decklist, cards []
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	ct, err := tx.Exec(ctx, `
-		UPDATE decklists SET user_id=$2, name=$3, description=$4, color_identity=$5, archetype=$6,
-			source_url=$7, decklist_raw=$8, card_count=$9, status=$10, updated_at=now()
+		UPDATE decklists SET user_id=$2, name=$3, description=$4, color_identity=$5, splash_colors=$6,
+			archetype=$7, source_url=$8, decklist_raw=$9, card_count=$10, status=$11, updated_at=now()
 		WHERE id=$1`,
-		d.ID, d.UserID, d.Name, d.Description, d.ColorIdentity, d.Archetype,
+		d.ID, d.UserID, d.Name, d.Description, d.ColorIdentity, d.SplashColors, d.Archetype,
 		d.SourceURL, d.DecklistRaw, d.CardCount, d.Status)
 	if err != nil {
 		return err
@@ -215,6 +215,59 @@ func (s *Store) UpdateDecklist(ctx context.Context, d *domain.Decklist, cards []
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+// RecomputeDeckColors re-derives color_identity and splash_colors for every deck in
+// a cube from its resolved main-board cards, and reports how many rows changed.
+//
+// A deck's colors are only recomputed when its list is saved, so a deck saved under
+// an older rule keeps whatever that rule inferred — including, before cast-cost
+// inference, a blue identity earned by a Mox Sapphire. Everything the inference
+// needs is already in `cards`, so this reruns it against the cache without going
+// back to Scryfall. Idempotent; the analytics job calls it before aggregating.
+func (s *Store) RecomputeDeckColors(ctx context.Context, cubeID uuid.UUID) (int, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT dc.decklist_id, dc.quantity, c.type_line,`+castColorCol+`
+		FROM decklist_cards dc
+		JOIN decklists d ON d.id = dc.decklist_id
+		JOIN cards c ON c.scryfall_id = dc.card_id
+		WHERE d.cube_id=$1 AND dc.is_resolved AND dc.board='main'`, cubeID)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	perDeck := map[uuid.UUID][]domain.DeckColorCard{}
+	for rows.Next() {
+		var id uuid.UUID
+		var qty int
+		var typeLine *string
+		var colors []string
+		if err := rows.Scan(&id, &qty, &typeLine, &colors); err != nil {
+			return 0, err
+		}
+		perDeck[id] = append(perDeck[id], domain.DeckColorCard{
+			Colors:   domain.ParseColorIdentity(colors),
+			IsLand:   typeLine != nil && domain.IsLandType(*typeLine),
+			Quantity: qty,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	changed := 0
+	for id, cards := range perDeck {
+		dc := domain.InferDeckColors(cards)
+		ct, err := s.pool.Exec(ctx, `
+			UPDATE decklists SET color_identity=$2, splash_colors=$3
+			WHERE id=$1 AND (color_identity, splash_colors) IS DISTINCT FROM ($2, $3)`,
+			id, int(dc.Main), int(dc.Splash))
+		if err != nil {
+			return changed, err
+		}
+		changed += int(ct.RowsAffected())
+	}
+	return changed, nil
 }
 
 // DecklistRecord is the win/loss record patch payload.

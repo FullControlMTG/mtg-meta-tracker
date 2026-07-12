@@ -99,6 +99,7 @@ type imageURIs struct {
 type cardFace struct {
 	Name       string     `json:"name"`
 	FlavorName string     `json:"flavor_name"`
+	Colors     []string   `json:"colors"`
 	ImageURIs  *imageURIs `json:"image_uris"`
 }
 
@@ -447,7 +448,7 @@ func toDomain(sc scryCard, raw json.RawMessage) (domain.Card, error) {
 		CMC:             sc.CMC,
 		TypeLine:        sc.TypeLine,
 		OracleText:      sc.OracleText,
-		Colors:          int(domain.ParseColorIdentity(sc.Colors)),
+		Colors:          int(castColors(sc)),
 		ColorIdentity:   int(domain.ParseColorIdentity(sc.ColorIdentity)),
 		Rarity:          sc.Rarity,
 		Layout:          sc.Layout,
@@ -468,6 +469,20 @@ func toDomain(sc scryCard, raw json.RawMessage) (domain.Card, error) {
 		card.ImageArtCrop = strPtr(img.ArtCrop)
 	}
 	return card, nil
+}
+
+// The colors of a card's casting cost. Scryfall reports them per face on a
+// double-faced card and omits the top-level field entirely, so taking `colors` at
+// face value files every DFC under colorless; union the faces instead.
+func castColors(sc scryCard) domain.ColorIdentity {
+	if len(sc.Colors) > 0 {
+		return domain.ParseColorIdentity(sc.Colors)
+	}
+	var ci domain.ColorIdentity
+	for _, f := range sc.CardFaces {
+		ci = ci.Merge(domain.ParseColorIdentity(f.Colors))
+	}
+	return ci
 }
 
 func strPtr(s string) *string {

@@ -47,7 +47,7 @@ export default async function DecklistDetailPage({ params }: { params: { id: str
       </p>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <h1 style={{ margin: 0 }}>{d.name}</h1>
-        <ColorPips bits={d.color_identity} showCode />
+        <ColorPips bits={d.color_identity} splash={d.splash_colors} showCode />
       </div>
       <p className="muted">
         {user && (

@@ -227,7 +227,7 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
 
         {infer && (
           <div className="card" style={{ marginTop: "0.75rem", display: "flex", alignItems: "center", gap: 10 }}>
-            <ColorPips bits={infer.color_identity} showCode />
+            <ColorPips bits={infer.color_identity} splash={infer.splash_colors} showCode />
             <span className="muted">
               {(infer.resolved?.length ?? 0)} resolved
               {infer.unresolved && infer.unresolved.length > 0 && (
