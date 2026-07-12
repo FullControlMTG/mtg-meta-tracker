@@ -80,7 +80,7 @@ function sectionRank(card: SortableCard): number {
 // four-color, then five), and within a count, in WUBRG order — so the guilds come
 // out WU, WB, WR, WG, UB, ... rather than interleaved. Identical within a mono or
 // colorless section, where every card shares one identity.
-function compareIdentity(a: number, b: number): number {
+export function compareIdentity(a: number, b: number): number {
   if (a === b) return 0;
   const byCount = popcount(a) - popcount(b);
   if (byCount !== 0) return byCount;
