@@ -12,9 +12,9 @@ well together.
 ```
                     ┌──────────────────────────────────────────┐
                     │                Next.js (App Router)        │
-  browser  ◀──────▶ │  • /decklists/[id]  static, ISR revalidate │
-                    │  • /users/[name]    static, ISR revalidate │
-                    │  • /analytics       client, interactive    │
+  browser  ◀──────▶ │  • /decks, /cubes, /analytics  dynamic     │
+                    │  • /decks/[id], /users/[name]  ISR         │
+                    │  • /analytics/[cube]           ISR, charts │
                     │  • /decks/new       live color inference    │
                     └───────────────┬──────────────┬────────────┘
                         rewrites /api│              │POST /api/revalidate
@@ -23,11 +23,11 @@ well together.
                     │              Go backend (chi)               │
                     │  httpapi ─ appctx (Caller) ─ auth           │
                     │  store (pgx) ── PostgreSQL                  │
-                    │  scryfall client   moxfield client          │
+                    │  scryfall client   ingest (pasted lists)    │
                     │  jobs worker ── analytics engine            │
                     └───────────────┬────────────────────────────┘
                                     ▼
-                         Scryfall API   Moxfield API
+                              Scryfall API
 ```
 
 - **Frontend / backend split.** Next.js owns rendering + UX. Go owns data,
@@ -35,8 +35,12 @@ well together.
   by a Next.js rewrite so the session cookie stays same-site (no CORS headaches).
 - **Render-on-update.** When a deck, record, or the cube pool changes, the Go
   backend (after recompute) calls a Next.js `/api/revalidate` route handler with
-  a shared secret, which runs `revalidatePath` for the affected static pages.
-  Decklist and user pages therefore render once and only re-render on real change.
+  a shared secret, which runs `revalidatePath` for the affected cached pages.
+  Detail pages therefore render once and only re-render on real change. Rendering
+  is chosen **per page**: the index pages (`/`, `/decks`, `/cubes`, `/analytics`)
+  are `force-dynamic` — they are cheap, and a stale list is more confusing than a
+  fresh query is expensive — while detail pages are ISR (`revalidate = 3600` for
+  decks/users/cube analytics, `300` for cards and cube pools).
 - **Trigger-driven analytics.** Any write that affects aggregates enqueues a job;
   a worker coalesces triggers and recomputes snapshots.
 
@@ -50,16 +54,28 @@ backend/
     config/              env config
     domain/              core types: color bitset, enums
     store/               pgx repositories
-    auth/                password, google oauth, sessions, middleware
-    httpapi/             chi router + handlers
-    scryfall/            batched card client
-    moxfield/            cube-list adapter
+      schema.sql         full schema — embedded, applied on every startup
+    auth/                password (argon2id), sessions, middleware
+    httpapi/             chi router + handlers  ← source of truth for routes
+    scryfall/            batched card client (exact printings)
+    ingest/              cube syncer: pasted list → resolve → diff pool
+    decklist/            list parser + card resolver
+    images/              self-hosted card-image cache
+    moxfield/            publicId URL parsing (display metadata only)
     analytics/           recompute engine + queries
-    jobs/                queue + worker
-db/schema.sql            full schema, auto-applied by Postgres on first init
-frontend/                Next.js app
+    jobs/                queue + worker + scheduler
+    revalidate/          Next.js revalidate webhook client
+db/                      scratch dir for gitignored dumps — NOT the schema
+frontend/                Next.js app (app/, components/, lib/)
 docs/                    this file + ROADMAP.md
 ```
+
+**The schema is not a migration set.** `backend/internal/store/schema.sql` is
+embedded in the binary and re-applied by `store.EnsureSchema` on every boot, so
+it must stay idempotent — a statement that fails against a populated database
+stops the server from starting. New columns go in the *Idempotent migrations*
+section at the bottom of the file, not in the `CREATE TABLE` block (which is a
+no-op once the table exists).
 
 ---
 
@@ -102,13 +118,22 @@ Color identity is a 5-bit **bitset** (`SMALLINT`, 0–31):
 | table | purpose | key columns |
 |---|---|---|
 | `users` | accounts | `id, username, email, display_name, bio, avatar_url, role, password_hash (nullable)` |
-| `oauth_accounts` | Google links | `user_id, provider, provider_account_id` |
+| `oauth_accounts` | Google links (table only — OAuth is unimplemented) | `user_id, provider, provider_account_id` |
 | `sessions` | server-side sessions (revocable) | `id (token), user_id, expires_at` |
-| `cubes` | a card pool = one Moxfield list | `id, name, moxfield_public_id, last_synced_at` |
-| `cards` | Scryfall cache | `scryfall_id (pk), oracle_id, name, cmc, type_line, colors, color_identity, rarity, image_* , raw jsonb` |
+| `cubes` | a card pool = one pasted list | `id, name, card_list (raw paste, source of truth), content_hash, moxfield_public_id (display only), last_synced_at` |
+| `cards` | Scryfall cache | `scryfall_id (pk), oracle_id, name, slug (generated), cmc, type_line, colors, color_identity, rarity, image_*, raw jsonb` |
 | `cube_cards` | pool membership + history | `cube_id, card_id, added_at, removed_at (nullable), is_active` |
+| `cube_sync_progress` | live progress for the admin sync UI | `cube_id (pk), status, cards_total, images_total/done/failed, unresolved text[]` |
 | `decklists` | deck + metadata + record | see below |
 | `decklist_cards` | normalized deck contents | `decklist_id, card_id, card_name, quantity, is_resolved, board` |
+
+`cards.slug` is a **generated** column (`STORED`) powering `/cards/<slug>`, so it
+can never drift from the name. It is not unique — two printings of a name are two
+rows — so slug lookups tie-break rather than assume one hit.
+
+`cube_sync_progress.unresolved` holds the names Scryfall could not resolve on the
+last sync. They are dropped from the pool, so surfacing them is what keeps a typo
+in the pasted list from silently shrinking the cube.
 
 ### `decklists`
 
@@ -121,9 +146,10 @@ cube_id           fk
 user_id           fk           -- uploader; owner + admins get U/D
 name              text
 description       text null
-color_identity    smallint     -- inferred bitset
-archetype         text null    -- enum: aggro | control | midrange | tempo | combo
-source_url        text null    -- moxfield link
+color_identity    smallint     -- inferred bitset (splashes excluded — see §8)
+splash_colors     smallint     -- inferred bitset of sub-threshold colors
+archetype         text null    -- CHECK enum: aggro | control | midrange | tempo | combo
+source_url        text null    -- external deck link
 decklist_raw      text         -- raw "1 Lightning Bolt\n…" (fits varchar/text)
 card_count        int
 status            text         -- draft | active | archived
@@ -163,7 +189,7 @@ analytics_runs(
 
 ### 4.1 Color stats — `color_stats`
 
-Three facets in one table so the dashboard can slice color performance three ways:
+Four facets in one table so the dashboard can slice color performance several ways:
 
 ```
 color_stats(run_id, facet, facet_key,
@@ -173,9 +199,12 @@ color_stats(run_id, facet, facet_key,
 - `facet = 'exact_identity'` → `facet_key` = the 0–31 bitset (WUBRG combos).
 - `facet = 'single_color'`  → `facet_key` = one color bit (decks *containing* W…).
 - `facet = 'color_count'`   → `facet_key` = 0–5 (mono/two/three-color…).
+- `facet = 'splash_color'`  → `facet_key` = one color bit (decks *splashing* W…).
 
 Answers "do blue decks win more?", "is two-color better than five-color?", and
-per-combo winrates.
+per-combo winrates. The `splash_color` facet is the **only** place splashes are
+counted — they are excluded from the other three, so a GW deck with two red cards
+does not read as a three-color deck (§8).
 
 ### 4.2 Card stats — `card_stats`
 
@@ -261,16 +290,30 @@ if per-game matchups are wanted later, add a `matches` table and a matchup facet
 - Resolve the cube's card names in **batches via `POST /cards/collection`**
   (≤75 identifiers per request). Set a descriptive `User-Agent` + `Accept:
   application/json`, sleep ~75–100 ms between requests, exponential backoff on 429.
-- Cache full payloads in `cards.raw` (jsonb) plus extracted columns; refresh on a
-  schedule. Images used: `art_crop` (overlaid deck view) and `normal` (detail).
+- Names resolve to an **exact printing**, with a search fallback for flavor names
+  and double-faced cards.
+- Cache full payloads in `cards.raw` (jsonb) plus extracted columns. Images used:
+  `art_crop` (overlaid card fan) and `normal` (detail).
+- **Images are self-hosted**, not hotlinked: `internal/images` downloads them to an
+  on-disk cache (`IMAGE_CACHE_DIR`; a Docker volume at `/data/images` in prod) and
+  the backend serves them from `GET /api/cards/{id}/image`. A cube sync prefetches
+  the whole pool.
 
-### Moxfield (cube list source)
-- Parse the `publicId` from the deck URL and fetch the list via Moxfield's
-  (unofficial) deck API behind a small **adapter interface**, so if access breaks
-  we can drop in manual paste / CSV import without touching callers.
-- Periodic sync diffs the fetched list against `cube_cards`: new names →
-  Scryfall resolve → insert; missing names → set `removed_at`, `is_active=false`
-  (soft, to preserve historical decklist references).
+### Cube lists (pasted, not fetched)
+
+The pool used to be fetched from Moxfield's unofficial deck API. **Moxfield now
+blocks us**, so the adapter idea paid off: the source of truth is a **raw pasted
+decklist** in `cubes.card_list`, entered by an admin at `/admin/cubes`.
+`internal/moxfield` survives only to parse a `publicId` out of a URL, kept as
+display metadata.
+
+`internal/ingest.SyncCube` parses `card_list` into pool entries and fingerprints
+them into `cubes.content_hash`, so an unchanged list skips re-resolution entirely.
+On a change it resolves via Scryfall and diffs against `cube_cards`: new names →
+insert; missing names → set `removed_at`, `is_active=false` (soft, to preserve
+historical decklist references). Names that do not resolve are **dropped from the
+pool but recorded** in `cube_sync_progress.unresolved`, so a typo surfaces on the
+admin page instead of silently shrinking the cube.
 
 ---
 
@@ -285,26 +328,63 @@ jobs worker ──▶ analytics engine recompute ──▶ new run (is_current)
       └──▶ POST Next.js /api/revalidate {secret, paths[]}
                  └──▶ revalidatePath for affected decklist/user/analytics pages
 ```
-- `jobs(id, type, payload jsonb, status, scheduled_at, attempts, last_error)`;
-  worker goroutine polls + dedups so a burst of edits = one recompute.
-- Scheduled jobs: daily Moxfield cube sync + Scryfall refresh.
+- `jobs(id, type, payload jsonb, status, scheduled_at, attempts, last_error, dedup_key)`;
+  a worker goroutine polls and coalesces on `dedup_key`, so a burst of edits = one
+  recompute.
+- Two job types are registered (in `cmd/server/main.go`): **`sync_cube`** and
+  **`recompute_analytics`**.
+- `internal/jobs/scheduler.go` re-enqueues `sync_cube` for every cube that has a
+  `card_list`, every `SYNC_INTERVAL_MINUTES` (default 360), starting 30s after
+  boot. Because the syncer content-hashes the list, a periodic sync on an unchanged
+  cube is nearly free — its real job is to self-heal cubes whose last resolve failed.
+- The image-download phase runs detached from the job and reports into
+  `cube_sync_progress`, so that row — not the job's status — is what "finished"
+  means to the admin UI.
 
 ---
 
-## 7. API surface (representative)
+## 7. API surface
 
-Public (accepts anonymous Caller):
-`GET /api/cube`, `/api/decklists`, `/api/decklists/:id`, `/api/users/:name`,
-`/api/analytics/overview|colors|cards|pairs`, `/api/cards/:id`.
+`backend/internal/httpapi/server.go` defines every route in one `Router()` — it is
+the source of truth; this list mirrors it.
 
-Auth: `POST /api/auth/register|login|logout`, `GET /api/auth/google[/callback]`,
-`GET /api/auth/me`.
+Public (accepts an anonymous Caller):
 
-Mutations (require Authenticated + ownership/role):
-`POST/PATCH/DELETE /api/users/:id`, `POST/PATCH/DELETE /api/decklists/:id`,
-`PATCH /api/decklists/:id/record`, `POST /api/decklists/infer-colors`.
+```
+GET  /api/health
+GET  /api/users                     GET /api/users/{username}
+GET  /api/cubes                     GET /api/cubes/{id}      GET /api/cubes/{id}/cards
+GET  /api/cards/{slug}              GET /api/cards/{id}/image   (self-hosted cache)
+GET  /api/decklists                 GET /api/decklists/{id}
+GET  /api/analytics/overview|colors|cards|pairs
+```
 
-Admin/ops: `POST /api/admin/cube/sync`, `POST /api/admin/analytics/recompute`.
+Auth — **login only; there is no register route and no public signup** (§ README):
+
+```
+POST /api/auth/login    POST /api/auth/logout    GET /api/auth/me
+```
+
+Authenticated (+ an ownership/role check inside the handler):
+
+```
+PATCH  /api/users/{id}              POST /api/users/{id}/password
+POST   /api/decklists               PATCH /api/decklists/{id}
+PATCH  /api/decklists/{id}/record   DELETE /api/decklists/{id}
+POST   /api/decklists/infer-colors
+```
+
+Admin only:
+
+```
+DELETE /api/users/{id}              POST /api/admin/users
+POST   /api/admin/cubes             PATCH /api/admin/cubes/{id}   DELETE /api/admin/cubes/{id}
+POST   /api/admin/cubes/{id}/sync   GET  /api/admin/cubes/{id}/sync-status
+POST   /api/admin/analytics/recompute
+```
+
+Google OAuth is **not implemented**: the `GOOGLE_*` config and the `oauth_accounts`
+table exist, but no route does.
 
 ---
 
@@ -336,11 +416,28 @@ under an older rule converges on the next run without a data migration.
 
 ## 9. Key frontend pages
 
-- `/` — headline meta dashboard (from `meta_snapshot`).
-- `/analytics` — dense, interactive: color winrate charts, card table ranked by
-  popularity, meta trends. Charts built with the `dataviz` guidance.
-- `/decklists` + `/decklists/[id]` — static/ISR. Detail page is the compact
-  **overlaid card fan**: Scryfall images stacked with ~90% overlap (only the top
-  ~10% name line peeks) using CSS negative margins, plus record + card stats.
-- `/users/[name]` — bio + dense decklist list with per-deck stats.
+Decks live under `/decks`; the old `/decklists` paths permanently redirect. The
+rendering mode is declared per page (see §1).
+
+- `/` — redirects to the first cube's analytics. *(dynamic)*
+- `/analytics` + `/analytics/[cube]` — the dense view: color winrate charts, a card
+  table ranked by popularity, meta headline numbers from `meta_snapshot`. Stats are
+  **scoped to a cube**. *(index dynamic; `[cube]` ISR 3600)*
+- `/decks` + `/decks/[id]` + `/decks/[id]/edit` — detail page is the compact
+  **overlaid card fan**: card images stacked with ~90% overlap (only the top ~10%
+  name line peeks) via CSS negative margins, each linking to its Scryfall printing,
+  plus record + card stats. *(index dynamic; detail ISR 3600)*
 - `/decks/new` — paste list, live color inference, record entry.
+- `/cubes` + `/cubes/[id]` — the pool, rendered with the same card-fan engine.
+  *(index dynamic; detail ISR 300)*
+- `/cards/[slug]` — card detail: printings, inclusion rate, most-played-with.
+  *(ISR 300)*
+- `/users/[username]` — bio + dense deck list with per-deck stats. *(ISR 3600)*
+- `/login`, `/settings` (change password), `/admin/cubes` (paste + sync a cube,
+  with live progress and unresolved names), `/admin/users` (create users, set
+  passwords, assign deck ownership).
+
+Charts (`ColorWinrateChart`, `RadarChart`) are **hand-rolled SVG** — there is no
+chart library. Styling is one global stylesheet (`app/globals.css`, CSS custom
+properties + a dark-mode block) plus inline styles; there is no Tailwind or
+CSS-in-JS. Each stat carries a hover (i) explaining it (`components/InfoHint.tsx`).

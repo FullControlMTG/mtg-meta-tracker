@@ -18,6 +18,8 @@ the best in your favorite format's metagame.
   analytics schema (color/card/pair stats), including which derived statistics
   we deliberately do *not* compute, and why.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — phased build plan.
+- [`CLAUDE.md`](CLAUDE.md) — the repo's non-obvious constraints (the idempotent
+  schema, the removed statistics, color inference), for humans and agents alike.
 
 ## Quickstart (dev)
 
@@ -41,6 +43,11 @@ cd frontend && npm install && cd .. && make frontend
 
 Then sign in at http://localhost:3000 as that admin and paste a cube list at
 `/admin/cubes`; the pool is built from it in the background by a Scryfall sync job.
+
+```sh
+make test                       # go vet ./... && go test ./... (no database needed)
+cd frontend && npx tsc --noEmit # type-check the frontend, as CI does
+```
 
 Note that `docker-compose.yml` is the **production** deployment (Traefik, a NAS bind
 mount for Postgres, a Docker volume for the card-image cache, no published DB port)
