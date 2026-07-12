@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { apiGetOptional, type DecklistCard, type DecklistDetail } from "@/lib/api";
 import { ColorPips } from "@/components/ColorPips";
-import { CardFan } from "@/components/CardFan";
+import { CardBrowser } from "@/components/CardBrowser";
 import { StatTile } from "@/components/StatTile";
 import { OwnerActions } from "@/components/OwnerActions";
 import { sortCards } from "@/lib/colors";
@@ -19,11 +19,6 @@ const BOARDS: { key: string; label: string }[] = [
   { key: "side", label: "Sideboard" },
   { key: "maybe", label: "Maybeboard" },
 ];
-
-// Card count as played, not as listed: a 17× basic is 17 cards.
-function countCards(cards: DecklistCard[]): number {
-  return cards.reduce((n, c) => n + c.quantity, 0);
-}
 
 export default async function DecklistDetailPage({ params }: { params: { id: string } }) {
   const detail = await apiGetOptional<DecklistDetail>(`/decklists/${params.id}`, 3600);
@@ -78,18 +73,13 @@ export default async function DecklistDetailPage({ params }: { params: { id: str
           This deck has no cards yet.
         </p>
       ) : (
-        <div style={{ marginTop: "1.5rem", display: "flex", flexDirection: "column", gap: "2.5rem" }}>
-          {sections.map((s) => (
-            <section key={s.key}>
-              <h2 style={{ textTransform: "uppercase", letterSpacing: "0.03em", fontSize: "1rem" }}>
-                {s.label}{" "}
-                <span className="muted" style={{ fontWeight: 400 }}>
-                  · {countCards(s.cards)}
-                </span>
-              </h2>
-              <CardFan cards={s.cards} maxCols={DECK_MAX_COLS} />
-            </section>
-          ))}
+        <div style={{ marginTop: "1.5rem" }}>
+          <CardBrowser
+            sections={sections}
+            maxCols={DECK_MAX_COLS}
+            countQuantity
+            placeholder="Search this deck…"
+          />
         </div>
       )}
 

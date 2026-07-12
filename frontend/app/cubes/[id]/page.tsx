@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { apiGetOptional, type CubeView, type CubeCard } from "@/lib/api";
-import { CardFan } from "@/components/CardFan";
+import { CardBrowser } from "@/components/CardBrowser";
 import { groupCubeCards, sortCards } from "@/lib/colors";
 
 export const revalidate = 300;
@@ -24,7 +24,7 @@ export default async function CubeDetailPage({ params }: { params: { id: string 
   const { cube } = view;
 
   return (
-    <main style={{ padding: "1.5rem" }}>
+    <main className="page">
       <div style={{ maxWidth: 1040, margin: "0 auto" }}>
         <p className="muted" style={{ marginBottom: "0.25rem" }}>
           <Link href="/cubes">← Cubes</Link>
@@ -49,26 +49,8 @@ export default async function CubeDetailPage({ params }: { params: { id: string 
           This cube has no cards yet.
         </p>
       ) : (
-        <div
-          style={{
-            maxWidth: 1040,
-            margin: "1.5rem auto 0",
-            display: "flex",
-            flexDirection: "column",
-            gap: "2.5rem",
-          }}
-        >
-          {groups.map((g) => (
-            <section key={g.key}>
-              <h2 style={{ textTransform: "uppercase", letterSpacing: "0.03em", fontSize: "1rem" }}>
-                {g.label}{" "}
-                <span className="muted" style={{ fontWeight: 400 }}>
-                  · {g.cards.length}
-                </span>
-              </h2>
-              <CardFan cards={g.cards} />
-            </section>
-          ))}
+        <div style={{ maxWidth: 1040, margin: "1.5rem auto 0" }}>
+          <CardBrowser sections={groups} placeholder="Search the cube…" />
         </div>
       )}
     </main>

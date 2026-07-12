@@ -70,6 +70,92 @@ h3 {
   padding: 1.5rem;
 }
 
+/* A page that centres its own blocks rather than sitting in one column — the cube, whose
+   fans want the full 1040px the .container's padding would eat into. */
+.page {
+  padding: 1.5rem;
+}
+
+/* --- nav --- */
+
+/* One row, at every width: it scrolls sideways before it wraps, so a long display name
+   can never push the tabs onto a second line. Nav.tsx swaps the wordy parts out below
+   the breakpoint; what remains is the emoji, the tabs, and the account. */
+.nav {
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.nav-row {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+.nav-brand {
+  font-weight: 700;
+  color: var(--text);
+}
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1;
+}
+.nav-link {
+  color: var(--text-secondary);
+}
+.nav-user {
+  color: var(--text);
+}
+/* Sign out is a real button in a row of links, and has to pass for one. */
+.nav-linkbtn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.nav-linkbtn:hover {
+  text-decoration: underline;
+}
+.nav-admin {
+  color: var(--accent);
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+.nav-account {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* The one pair of breakpoint switches: .nav-wide is the desktop wording, .nav-narrow its
+   mobile stand-in. Exactly one of them is ever in the layout. */
+.nav-narrow {
+  display: none;
+}
+
+/* --- search --- */
+
+/* The bare `input` rule below is width: 100% — a filter box wants to be a box. */
+.search-bar {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+.search {
+  flex: 1 1 200px;
+  max-width: 320px;
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -294,9 +380,16 @@ label {
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
-.fan-link:hover .fan-card,
-.fan-link:focus-visible .fan-card,
-.fan-card:hover {
+/* Hover-capable pointers only: on a touch screen the "hover" a tap leaves behind sticks,
+   so a tapped card would sit shifted 12px to the right until something else was tapped. */
+@media (hover: hover) {
+  .fan-link:hover .fan-card,
+  .fan-card:hover {
+    transform: translateX(12px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
+}
+.fan-link:focus-visible .fan-card {
   transform: translateX(12px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
@@ -351,4 +444,64 @@ label {
 .chart-tip strong {
   color: var(--text);
   font-weight: 600;
+}
+
+/* The stack of card sections a cube pool or a decklist is made of. */
+.card-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+.card-section-title {
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 1rem;
+}
+
+/* --- mobile ---
+   The app's one width breakpoint. Everything above is written for a desktop; this is the
+   whole of what a phone changes. Keep it that way — a second number to remember is a
+   second thing to get wrong. */
+@media (max-width: 640px) {
+  .container,
+  .page {
+    padding: 1rem;
+  }
+
+  .nav-row {
+    padding: 0.75rem 1rem;
+    gap: 0.85rem;
+    font-size: 0.92rem;
+  }
+  .nav-links {
+    gap: 0.85rem;
+  }
+  .nav-account {
+    gap: 0.7rem;
+  }
+  .nav-wide {
+    display: none;
+  }
+  .nav-narrow {
+    display: inline;
+  }
+  /* The tabs have first claim on the row, and a display name is arbitrarily long — at
+     390px an admin's name is what pushes the ⚙ off the end of it. So on a phone the
+     account is the ⚙ alone; the settings page it opens names who you are signed in as,
+     links to your profile, and carries the Sign out. */
+  .nav-user {
+    display: none;
+  }
+
+  .search {
+    max-width: none;
+  }
+
+  .card-sections {
+    gap: 1.5rem;
+  }
+
+  h1 {
+    font-size: 1.6rem;
+  }
 }

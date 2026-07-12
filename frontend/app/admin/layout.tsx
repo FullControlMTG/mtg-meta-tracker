@@ -26,6 +26,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             padding: "1rem 1.5rem 0",
             display: "flex",
             gap: "1rem",
+            // Same rule as the main nav: scroll sideways before wrapping onto a second line.
+            whiteSpace: "nowrap",
+            overflowX: "auto",
           }}
         >
           {tabs.map((t) => (

@@ -5,13 +5,14 @@ import { useEffect, useRef, useState } from "react";
 
 const DEFAULT_MIN_CARD_W = 200; // minimum readable card width in px → drives column count
 const DEFAULT_MAX_COLS = 8; // a cube section holds far more cards than a deck; more columns → shorter
+const MIN_CARD_W_FLOOR = 130; // narrower than this and the peeking title strip stops being legible
 const CARD_RATIO = 88 / 63; // MTG card aspect ratio (height / width)
 const PEEK_RATIO = 0.19; // fraction of a stacked card's height left visible (title strip + a sliver of art)
 
 // Minimal shape shared by DecklistCard and CubeCard. is_resolved is optional —
 // cube cards are always resolved, so treat a missing flag as resolved. quantity is
 // optional too — a cube pool is singleton, so only decks ever badge a card.
-type FanCard = {
+export type FanCard = {
   card_id?: string;
   card_name: string;
   image_normal?: string;
@@ -24,7 +25,13 @@ type FanCard = {
 type Dims = { cols: number; cardW: number; cardH: number; strip: number };
 
 function computeDims(containerW: number, maxCols: number, minCardW: number): Dims {
-  const cols = Math.min(maxCols, Math.max(1, Math.floor(containerW / minCardW)));
+  // A phone is narrower than one minCardW-wide card, and a single column of a 400-card
+  // cube section is a mile of stacked title strips. So on a container too narrow for two
+  // cards at the preferred width, take two narrower ones instead — down to the floor,
+  // under which the strips stop being readable and one column is the better answer after
+  // all. On any desktop container this is minCardW untouched (at 1040px: min(200, 520)).
+  const effMinW = Math.max(MIN_CARD_W_FLOOR, Math.min(minCardW, containerW / 2));
+  const cols = Math.min(maxCols, Math.max(1, Math.floor(containerW / effMinW)));
   const cardW = containerW / cols;
   const cardH = cardW * CARD_RATIO;
   const strip = cardH * PEEK_RATIO;

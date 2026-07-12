@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ColorPips } from "@/components/ColorPips";
@@ -8,6 +8,7 @@ import { SortHeader } from "@/components/SortHeader";
 import { type CardStat } from "@/lib/api";
 import { pct } from "@/lib/format";
 import { canHover, placeFloating, type Placed } from "@/lib/hover";
+import { matchesQuery } from "@/lib/search";
 import { useTableSort, type SortColumn } from "@/lib/tableSort";
 
 // The cube's card stats: sortable on every column, and each row shows the card's art on
@@ -52,8 +53,17 @@ const COLUMNS: SortColumn<CardStat>[] = [
 ];
 
 export function CardStatsTable({ cards, cubeId }: { cards: CardStat[]; cubeId: string }) {
+  const [query, setQuery] = useState("");
+  const deferred = useDeferredValue(query);
+  const filtering = deferred.trim() !== "";
+  // Filter under the sort: useTableSort takes rows, so the two compose for free.
+  const matches = useMemo(
+    () => (filtering ? cards.filter((c) => matchesQuery(c.name, deferred)) : cards),
+    [cards, deferred, filtering],
+  );
+
   // Matches the order the API already returns, so the first paint doesn't reshuffle.
-  const { rows, sort, toggle } = useTableSort(cards, COLUMNS, {
+  const { rows, sort, toggle } = useTableSort(matches, COLUMNS, {
     initial: { key: "inclusion_rate", dir: "desc" },
     tiebreak: byName,
   });
@@ -79,6 +89,22 @@ export function CardStatsTable({ cards, cubeId }: { cards: CardStat[]; cubeId: s
 
   return (
     <>
+      <div className="search-bar">
+        <input
+          className="search"
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search cards…"
+          aria-label="Search cards by name"
+        />
+        {filtering && (
+          <span className="muted" style={{ fontSize: "0.85rem" }}>
+            {matches.length} of {cards.length}
+          </span>
+        )}
+      </div>
+
       <div style={{ overflowX: "auto" }}>
         <table>
           <thead>
@@ -118,7 +144,7 @@ export function CardStatsTable({ cards, cubeId }: { cards: CardStat[]; cubeId: s
             {rows.length === 0 && (
               <tr>
                 <td colSpan={COLUMNS.length} className="muted">
-                  No cards in analyzed decks.
+                  {filtering ? "No cards match." : "No cards in analyzed decks."}
                 </td>
               </tr>
             )}

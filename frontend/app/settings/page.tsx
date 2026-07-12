@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { apiPost } from "@/lib/api";
 import { useSession } from "@/components/SessionProvider";
+import { SignOutButton } from "@/components/SignOutButton";
 
 export default function SettingsPage() {
   const { me } = useSession();
@@ -104,6 +105,11 @@ export default function SettingsPage() {
           {busy ? "Saving…" : "Change password"}
         </button>
       </form>
+
+      {/* The nav has no room for a Sign out on a phone, so this is the only one there is. */}
+      <div className="card" style={{ marginTop: "1rem" }}>
+        <SignOutButton className="button" />
+      </div>
     </main>
   );
 }
