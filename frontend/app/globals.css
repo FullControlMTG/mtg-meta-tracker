@@ -15,6 +15,11 @@
      a near-white and black is a near-black: each vanishes into one of the two surfaces,
      and the ring is what keeps it a shape. */
   --pip-ring: rgba(0, 0, 0, 0.4);
+  /* Fill for a mana-color shape that is *absent* — an unplayed sector of the color
+     wheel. Deliberately not --grid: black is a near-black, and beside a grid-grey
+     neighbour a Mardu wheel read as Boros with a hole in it. Whatever this becomes,
+     it has to stay plainly lighter than the darkest hex in the pie. */
+  --pip-off: #c9c8c0;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -29,6 +34,9 @@
     --accent: #3987e5;
     --accent-weak: #184f95;
     --pip-ring: rgba(255, 255, 255, 0.5);
+    /* Well clear of black's #150b00 — on the dark surface the two were the same
+       shade of nearly-nothing, which is the whole reason this variable exists. */
+    --pip-off: #5c5b54;
   }
 }
 
@@ -361,6 +369,29 @@ th {
   letter-spacing: 0.03em;
   cursor: default;
 }
+/* A stats table sharing a chart card's width, not the page's. At the deck-grid's
+   320px minimum the default cell padding pushed four columns of pips, codes and
+   percentages past the card and it scrolled sideways; here the outer cells give up
+   their padding to the card's own, and the number columns shrink to their digits so
+   the slack lands on the one column with something to lose. */
+table.table-compact th,
+table.table-compact td {
+  padding: 0.4rem 0.35rem;
+}
+table.table-compact th:first-child,
+table.table-compact td:first-child {
+  padding-left: 0;
+}
+table.table-compact th:last-child,
+table.table-compact td:last-child {
+  padding-right: 0;
+}
+table.table-compact th:not(:first-child),
+table.table-compact td:not(:first-child) {
+  width: 1%;
+  white-space: nowrap;
+}
+
 th.sortable {
   cursor: pointer;
 }

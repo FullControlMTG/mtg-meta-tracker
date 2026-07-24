@@ -18,7 +18,12 @@ export function ColorPips({
   const cs = identityColors(bits);
   const ss = splash === 0 ? [] : identityColors(splash);
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+    // Wraps rather than sets a floor: in a narrow table cell the code drops under the
+    // pips instead of forcing the column wider than the card it sits in. The pips
+    // themselves stay on one line — they are the identity, and half of WUBRG is a lie.
+    <span
+      style={{ display: "inline-flex", alignItems: "center", flexWrap: "wrap", gap: 4 }}
+    >
       <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
         {cs.map((c) => (
           <span

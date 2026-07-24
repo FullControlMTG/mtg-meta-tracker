@@ -190,33 +190,32 @@ export default async function UserPage({ params }: { params: { username: string 
               <p className="muted" style={{ marginTop: "-0.25rem" }}>
                 Top 5 played color combinations
               </p>
-              {/* Four columns of pips, codes and percentages do not fit the 320px a card
-                  gets at the grid's minimum, and a table cannot shrink below its
-                  min-content — so it scrolls inside the card rather than out of it. */}
-              <div style={{ overflowX: "auto" }}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Colors</th>
-                      <th>Decks</th>
-                      <th>Share</th>
-                      <th>Winrate</th>
+              {/* .table-compact spends the outer cells' padding and the number columns'
+                  slack on the colors column, which is what gets the four columns of
+                  pips, codes and percentages inside the 320px a card gets at the grid's
+                  minimum — no sideways scroll, and none needed on a phone either. */}
+              <table className="table-compact">
+                <thead>
+                  <tr>
+                    <th>Colors</th>
+                    <th>Decks</th>
+                    <th>Share</th>
+                    <th>Winrate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ranked.slice(0, 5).map((c) => (
+                    <tr key={c.bits}>
+                      <td>
+                        <ColorPips bits={c.bits} showCode />
+                      </td>
+                      <td>{c.decks}</td>
+                      <td>{pct(share(c.decks, decks.length), 0)}</td>
+                      <td>{pct(c.games > 0 ? c.wins / c.games : null)}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {ranked.slice(0, 5).map((c) => (
-                      <tr key={c.bits}>
-                        <td>
-                          <ColorPips bits={c.bits} showCode />
-                        </td>
-                        <td>{c.decks}</td>
-                        <td>{pct(share(c.decks, decks.length), 0)}</td>
-                        <td>{pct(c.games > 0 ? c.wins / c.games : null)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </section>
           </div>
 

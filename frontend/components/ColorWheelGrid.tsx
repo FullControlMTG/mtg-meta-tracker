@@ -92,9 +92,11 @@ const TIP_W = 220;
 const TIP_H = 104;
 
 // A combination they have never built keeps its shape and loses its color: the map
-// is the same for every player, and only the data lights it. Drawn in --grid rather
-// than dimmed with a filter — a filter on any ancestor of a `position: fixed` box
-// makes it the containing block, which is exactly the trap lib/hover.ts warns about.
+// is the same for every player, and only the data lights it. Drawn in --pip-off
+// rather than dimmed with a filter — a filter on any ancestor of a `position: fixed`
+// box makes it the containing block, which is exactly the trap lib/hover.ts warns
+// about. --pip-off, not --grid, because a lit black sector against grid-grey was a
+// difference nobody could see: Mardu came out looking like Boros.
 function Wheel({ bits, built }: { bits: number; built: boolean }) {
   return (
     <svg
@@ -110,7 +112,7 @@ function Wheel({ bits, built }: { bits: number; built: boolean }) {
           <path
             key={c.bit}
             d={SECTORS[i]}
-            fill={built ? c.hex : "var(--grid)"}
+            fill={built ? c.hex : "var(--pip-off)"}
             stroke={built ? "var(--pip-ring)" : "none"}
             strokeWidth={0.75}
           />
