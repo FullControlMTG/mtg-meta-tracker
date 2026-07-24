@@ -148,8 +148,7 @@ export default async function UserPage({ params }: { params: { username: string 
             <section className="card">
               <h2>Colors Played</h2>
               <p className="muted" style={{ marginTop: "-0.25rem" }}>
-                How often they build on each color. A multicolored deck counts on each of
-                its colors, so the shares sum past 100%. Splashes are excluded.
+                How often they build on each color.
               </p>
               <RadarChart
                 axes={colorAxes(decks, (d) => d.color_identity, "play")}
@@ -160,8 +159,7 @@ export default async function UserPage({ params }: { params: { username: string 
             <section className="card">
               <h2>Colors Splashed</h2>
               <p className="muted" style={{ marginTop: "-0.25rem" }}>
-                Which colors they reach for rather than build on — a color on fewer than
-                10% of a deck&apos;s nonland cards.
+                Which colors they reach for rather than build on.
               </p>
               <RadarChart
                 axes={colorAxes(decks, (d) => d.splash_colors, "splash")}
@@ -172,8 +170,7 @@ export default async function UserPage({ params }: { params: { username: string 
             <section className="card">
               <h2>Color Pairings</h2>
               <p className="muted" style={{ marginTop: "-0.25rem" }}>
-                Which colors they put together. Read a row or a column — the grid is
-                symmetric.
+                Which colors they put together.
               </p>
               <ColorPairHeatmap bitsets={decks.map((d) => d.color_identity)} />
             </section>
