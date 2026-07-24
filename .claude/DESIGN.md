@@ -287,6 +287,8 @@ GET  /api/users                     GET /api/users/{username}
 GET  /api/cubes                     GET /api/cubes/{id}   GET /api/cubes/{id}/cards
 GET  /api/cards/{slug}              GET /api/cards/{id}/image   (self-hosted cache)
 GET  /api/decklists                 GET /api/decklists/{id}
+     (?cube= ?user= ; each item carries its owner and cube name for the
+      deck table's `user:` / `cube:` filters)
 GET  /api/analytics/overview|colors|color-trend|cards|pairs
 GET  /api/today                     (the server's date, in APP_TIMEZONE)
 ```
@@ -326,9 +328,10 @@ Decks live under `/decks`; the old `/decklists` paths permanently redirect.
 - `/analytics` + `/analytics/[cube]` — the dense view: color charts, the color
   trend, a card table ranked by popularity, headline numbers from
   `meta_snapshot`. Scoped to a cube. *(index dynamic; `[cube]` ISR 3600)*
-- `/decks` + `/decks/[id]` + `/decks/[id]/edit` — the detail page renders the
-  overlaid card fan, each card linking to its Scryfall printing, plus record and
-  card stats. *(index dynamic; detail ISR 3600)*
+- `/decks` + `/decks/[id]` + `/decks/[id]/edit` — the index is the filterable deck
+  table, and takes a query in the URL (`?q=`, `?sort=`, `?dir=`); the detail page
+  renders the overlaid card fan, each card linking to its Scryfall printing, plus
+  record and card stats. *(index dynamic; detail ISR 3600)*
 - `/decks/new` — paste a list, live color inference, record entry.
 - `/cubes` + `/cubes/[id]` — the pool, same card-fan engine. *(index dynamic;
   detail ISR 300)*
@@ -452,6 +455,40 @@ because the deploy image has no `/usr/share/zoneinfo`.
 Dates cross the wire as `"2006-01-02"` inbound and midnight-UTC RFC3339 outbound.
 The frontend reads the calendar day off the string (`isoDay`/`fmtDate`) because
 `new Date("…T00:00:00Z")` renders the previous day west of Greenwich.
+
+### The deck list filters with a query language, client-side
+
+`DeckTable` is the one deck-list element, and every page that shows decks uses it.
+Its filter is a line of text in the `field:value` language of `lib/deckQuery.ts` —
+`losses:0 games>0 c:ur` — parsed to a predicate over the list the page already
+fetched. Terms are ANDed, `-` negates one, quotes group a value, and a bare word
+searches the deck name. The grammar is deliberately GitHub's and Scryfall's rather
+than one invented here, since the playgroup types Scryfall queries anyway.
+
+The extensibility is the `FIELDS` table, not boolean algebra: a filterable field is
+one entry, and it is then parseable, documentable (the panel's reference is
+generated from it) and linkable for free. There is no OR and no parentheses.
+
+Two consequences worth knowing:
+
+- The filter runs in the browser over the whole list, so the backend keeps serving
+  one cacheable payload per page and the filter is instant. This holds because a
+  playgroup's deck count is in the hundreds. A cube with tens of thousands of decks
+  would want this pushed into `store.DecklistFilter` instead.
+- `GET /api/decklists` therefore denormalizes the owner (`user`) and the cube
+  (`cube_name`) onto each item — `user:` and `cube:` have nothing to match against a
+  bare uuid. Both are read whole and mapped in the handler rather than joined per
+  deck.
+
+Filtering is opened from a button in the table's toolbar, which hosts the page's own
+heading and buttons so the control costs no vertical space. A query in the URL
+(`?q=`, plus `?sort=`/`?dir=`) is applied on the server for first paint and opens the
+panel, so a list that arrives filtered shows what filtered it; the live query is
+mirrored back with `history.replaceState` rather than a router push, since re-running
+the server component would refetch the same payload to render the same rows. This is
+how a stat links to the rows behind it — the "Undefeated decks" tiles on the cube and
+player pages link to the same decks they counted, best record first, from the shared
+`UNDEFEATED_TERMS`.
 
 ### No chart library
 

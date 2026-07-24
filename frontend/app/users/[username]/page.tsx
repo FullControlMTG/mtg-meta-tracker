@@ -6,6 +6,7 @@ import {
   type PublicUser,
 } from "@/lib/api";
 import { COLORS, colorCount, identityString } from "@/lib/colors";
+import { UNDEFEATED_TERMS, deckListHref, quoteTerm } from "@/lib/deckQuery";
 import { num, pct } from "@/lib/format";
 import { ColorPairHeatmap } from "@/components/ColorPairHeatmap";
 import { ColorPips } from "@/components/ColorPips";
@@ -124,7 +125,16 @@ export default async function UserPage({ params }: { params: { username: string 
             <StatTile value={String(games)} label="Matches played" />
             <StatTile value={`${wins}-${losses}`} label="Record (W-L)" />
             <StatTile value={pct(games > 0 ? wins / games : null)} label="Winrate" />
-            <StatTile value={String(undefeated)} label="Undefeated decks" />
+            {/* Reads the same as the cube's tile, so it links the same way — their
+                undefeated decks, best record first. */}
+            <StatTile
+              value={String(undefeated)}
+              label="Undefeated decks"
+              href={deckListHref(
+                [`user:${quoteTerm(user.username)}`, ...UNDEFEATED_TERMS],
+                { key: "record", dir: "desc" },
+              )}
+            />
             <StatTile value={num(avgColors, 1)} label="Avg. colors per deck" />
             {/* The headline answer to "what do they play" — the pips are in the
                 combinations card below, where there is room for a legible row. */}
@@ -210,10 +220,8 @@ export default async function UserPage({ params }: { params: { username: string 
             </section>
           </div>
 
-          <h2 style={{ marginTop: "1.5rem" }}>Decklists</h2>
-          <div className="card" style={{ overflowX: "auto" }}>
-            <DeckTable decks={items} />
-          </div>
+          {/* No syncUrl: this page's address is the player, not a deck query. */}
+          <DeckTable decks={items} heading={<h2 style={{ marginTop: "1.5rem" }}>Decklists</h2>} />
         </>
       )}
     </main>

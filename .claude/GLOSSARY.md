@@ -106,6 +106,12 @@ without it they disappear into one of the two surfaces.
 
 **Splash threshold** — `domain.SplashThreshold`, 0.10.
 
+**Deck query** — the `field:value` filter language the deck table reads, defined in
+`frontend/lib/deckQuery.ts`. Terms are ANDed, `-` negates one, a bare word searches
+the deck name. Its `FIELDS` table is the list of what a deck can be filtered by, and
+the panel's reference is generated from it. Any page can link into a filtered list
+with `/decks?q=…&sort=…&dir=…` (see `deckListHref`).
+
 ## Deployment terms
 
 **Traefik** — the reverse proxy fronting production. The frontend container

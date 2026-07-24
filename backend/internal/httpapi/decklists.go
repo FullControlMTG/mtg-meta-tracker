@@ -113,13 +113,36 @@ func (s *Server) handleListDecklists(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "could not list decklists")
 		return
 	}
+	// Owner and cube travel with the list so the deck table can filter on them
+	// (frontend lib/deckQuery.ts) — a `user:` or `cube:` term has nothing to match
+	// against a bare user_id. Both are read whole rather than joined per deck: a
+	// playgroup has a handful of each, and neither list is worth an N+1.
+	users := map[uuid.UUID]map[string]any{}
+	if list, err := s.store.ListUsers(r.Context()); err == nil {
+		for _, u := range list {
+			users[u.ID] = u.Public()
+		}
+	}
+	cubes := map[uuid.UUID]string{}
+	if list, err := s.store.ListCubes(r.Context()); err == nil {
+		for _, c := range list {
+			cubes[c.ID] = c.Name
+		}
+	}
 	out := make([]map[string]any, len(decks))
 	for i := range decks {
-		out[i] = map[string]any{
+		item := map[string]any{
 			"decklist":      decks[i],
 			"color_string":  domain.ColorIdentity(decks[i].ColorIdentity).String(),
 			"splash_string": domain.ColorIdentity(decks[i].SplashColors).String(),
 		}
+		if u, ok := users[decks[i].UserID]; ok {
+			item["user"] = u
+		}
+		if name, ok := cubes[decks[i].CubeID]; ok {
+			item["cube_name"] = name
+		}
+		out[i] = item
 	}
 	writeJSON(w, http.StatusOK, out)
 }

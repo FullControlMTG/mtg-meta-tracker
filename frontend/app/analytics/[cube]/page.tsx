@@ -13,6 +13,7 @@ import { COLORS } from "@/lib/colors";
 import { CardStatsTable } from "@/components/CardStatsTable";
 import { ColorTrendChart } from "@/components/ColorTrendChart";
 import { CubeSwitcher } from "@/components/CubeSwitcher";
+import { UNDEFEATED_TERMS, deckListHref, quoteTerm } from "@/lib/deckQuery";
 import { RadarChart, type RadarAxis } from "@/components/RadarChart";
 import { StatTile } from "@/components/StatTile";
 import { num, pct } from "@/lib/format";
@@ -141,7 +142,16 @@ export default async function CubeStatsPage({ params }: { params: { cube: string
             <StatTile value={String(meta!.total_decks)} label="Decks recorded" />
             <StatTile value={num(meta!.avg_cmc)} label="Avg. mana value" />
             <StatTile value={pct(meta!.power9_share, 0)} label="Decks playing Power 9" />
-            <StatTile value={String(meta!.undefeated_decks)} label="Undefeated decks" />
+            {/* The one tile that counts decks you can go and read. Same query the
+                number was computed from, scoped to this cube, best record first. */}
+            <StatTile
+              value={String(meta!.undefeated_decks)}
+              label="Undefeated decks"
+              href={deckListHref(
+                [`cube:${quoteTerm(view.cube.name)}`, ...UNDEFEATED_TERMS],
+                { key: "record", dir: "desc" },
+              )}
+            />
           </div>
 
           <div

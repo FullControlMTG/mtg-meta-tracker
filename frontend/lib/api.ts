@@ -187,6 +187,11 @@ export interface PublicUser {
 export interface DecklistListItem {
   decklist: Decklist;
   color_string: string;
+  // Owner and cube, denormalized onto the listing so the deck table can filter on
+  // them (lib/deckQuery.ts) — `user:` and `cube:` have nothing to match against the
+  // bare ids on the decklist. Absent for a deck whose owner or cube has been deleted.
+  user?: PublicUser;
+  cube_name?: string;
 }
 export interface DecklistDetail {
   decklist: Decklist;

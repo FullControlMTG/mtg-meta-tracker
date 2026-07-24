@@ -156,6 +156,134 @@ h3 {
   max-width: 320px;
 }
 
+/* --- table toolbar and filter --- */
+
+/* The row a table's heading, its buttons and its Filter toggle share. The toggle costs
+   no height of its own because of this: it joins a row the page was already spending. */
+.table-toolbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* A secondary button: the shape of a .pill, operable like a .button, and quiet enough
+   to sit next to a real one without competing with it. */
+.ghost-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.ghost-button:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--text-secondary);
+}
+.ghost-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+/* Filtering is a mode the table is in, and a mode has to be visible from outside the
+   panel that set it — otherwise a collapsed filter is a list that is quietly short. */
+.ghost-button.active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.ghost-count {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent-weak);
+  color: var(--text);
+}
+
+.filter-panel {
+  margin-top: 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+/* The query is a line of text, not a word — it gets the room the card search does not. */
+.filter-row .search {
+  flex: 1 1 260px;
+  max-width: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+}
+.filter-errors {
+  margin: 0.6rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--bad);
+  font-size: 0.82rem;
+}
+.filter-help {
+  margin-top: 0.6rem;
+  font-size: 0.82rem;
+}
+.filter-help summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.filter-help p {
+  margin: 0.5rem 0;
+  line-height: 1.5;
+}
+.filter-help code {
+  font-size: 0.95em;
+}
+/* Two columns of field/description on a desktop, one on a phone (see the breakpoint).
+   The dl is the whole reference, generated from the field table — it grows by itself. */
+.filter-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0.1rem 1.25rem;
+  margin: 0;
+}
+.filter-fields dt {
+  margin-top: 0.35rem;
+}
+.filter-fields dd {
+  margin: 0;
+  line-height: 1.4;
+}
+/* The example is the control: clicking it adds that term to the query, so the
+   reference is also the way you build one. */
+.filter-example {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--page);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.95em;
+  cursor: pointer;
+}
+.filter-example:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -181,6 +309,22 @@ h3 {
    padding rather than the .card default sized for prose and charts. */
 .tile {
   padding: 0.55rem 0.75rem;
+}
+
+/* A tile that links keeps the tile's own colors — a row of stats where one is
+   accent-blue reads as a different kind of thing, and it is not. The affordance is the
+   border lifting on hover. */
+.tile-link {
+  color: inherit;
+  display: block;
+}
+.tile-link:hover {
+  border-color: var(--accent);
+  text-decoration: none;
+}
+.tile-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .tile-value {
@@ -512,6 +656,12 @@ label {
 
   .search {
     max-width: none;
+  }
+
+  /* The field reference goes to one column; two of them at 390px is one column of
+     hyphenation. */
+  .filter-fields {
+    grid-template-columns: 1fr;
   }
 
   .card-sections {
