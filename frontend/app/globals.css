@@ -168,6 +168,15 @@ h3 {
   gap: 1rem;
 }
 
+/* A grid item's automatic minimum size is its content, so a card whose content has a
+   wide min-content — a table of pips and percentages — grows past the track the grid
+   gave it and spills over its neighbour instead of over its own border. A card is
+   never allowed to be wider than its column; anything that does not fit is the
+   content's problem to scroll. */
+.grid > * {
+  min-width: 0;
+}
+
 /* A stat tile holds two lines of text and nothing else, so it gets its own tighter
    padding rather than the .card default sized for prose and charts. */
 .tile {

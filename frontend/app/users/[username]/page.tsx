@@ -178,31 +178,35 @@ export default async function UserPage({ params }: { params: { username: string 
             <section className="card">
               <h2>Combinations</h2>
               <p className="muted" style={{ marginTop: "-0.25rem" }}>
-                Their exact color pairs and shards, most-built first. Splashes are
-                disregarded, so a two-color deck with a splash is counted as two colors.
+                Top 5 played color combinations
               </p>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Colors</th>
-                    <th>Decks</th>
-                    <th>Share</th>
-                    <th>Winrate</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ranked.slice(0, 8).map((c) => (
-                    <tr key={c.bits}>
-                      <td>
-                        <ColorPips bits={c.bits} showCode />
-                      </td>
-                      <td>{c.decks}</td>
-                      <td>{pct(share(c.decks, decks.length), 0)}</td>
-                      <td>{pct(c.games > 0 ? c.wins / c.games : null)}</td>
+              {/* Four columns of pips, codes and percentages do not fit the 320px a card
+                  gets at the grid's minimum, and a table cannot shrink below its
+                  min-content — so it scrolls inside the card rather than out of it. */}
+              <div style={{ overflowX: "auto" }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Colors</th>
+                      <th>Decks</th>
+                      <th>Share</th>
+                      <th>Winrate</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {ranked.slice(0, 5).map((c) => (
+                      <tr key={c.bits}>
+                        <td>
+                          <ColorPips bits={c.bits} showCode />
+                        </td>
+                        <td>{c.decks}</td>
+                        <td>{pct(share(c.decks, decks.length), 0)}</td>
+                        <td>{pct(c.games > 0 ? c.wins / c.games : null)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </section>
           </div>
 
