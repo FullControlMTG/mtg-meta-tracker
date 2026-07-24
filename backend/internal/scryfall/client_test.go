@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
 )
 
 func TestFrontFace(t *testing.T) {
@@ -24,6 +26,43 @@ func TestFrontFace(t *testing.T) {
 	for in, want := range cases {
 		if got := frontFace(in); got != want {
 			t.Errorf("frontFace(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestCastColorsCountsOnlyCastableFaces(t *testing.T) {
+	face := func(cost string, colors ...string) cardFace {
+		return cardFace{ManaCost: cost, Colors: colors}
+	}
+	cases := []struct {
+		name string
+		card scryCard
+		want domain.ColorIdentity
+	}{
+		{"single-faced", scryCard{Colors: []string{"W"}}, domain.ColorIdentity(domain.White)},
+		{"colorless", scryCard{}, 0},
+		// The back is turned up, never cast, so its green does not count.
+		{"transform", scryCard{CardFaces: []cardFace{
+			face("{U}", "U"), face("", "G", "U"),
+		}}, domain.ColorIdentity(domain.Blue)},
+		// Both halves are castable on a split card, an adventure, and a modal DFC.
+		{"split", scryCard{CardFaces: []cardFace{
+			face("{W}", "W"), face("{B}", "B"),
+		}}, domain.ColorIdentity(domain.White | domain.Black)},
+		{"adventure", scryCard{CardFaces: []cardFace{
+			face("{2}{R}", "R"), face("{R}", "R"),
+		}}, domain.ColorIdentity(domain.Red)},
+		{"modal dfc", scryCard{CardFaces: []cardFace{
+			face("{1}{R}", "R"), face("{3}{R}{R}", "R"),
+		}}, domain.ColorIdentity(domain.Red)},
+		// A land back face has no cost and no colors either way.
+		{"land back", scryCard{CardFaces: []cardFace{
+			face("{1}{B}", "B"), face(""),
+		}}, domain.ColorIdentity(domain.Black)},
+	}
+	for _, tc := range cases {
+		if got := castColors(tc.card); got != tc.want {
+			t.Errorf("%s: castColors = %v, want %v", tc.name, got, tc.want)
 		}
 	}
 }

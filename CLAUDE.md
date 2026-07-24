@@ -70,6 +70,12 @@ its nonland cards (Scryfall `colors`) — and never from `color_identity`. Color
 identity counts mana a card *produces*, which is how a Selesnya deck running a
 Mox Sapphire used to come out blue.
 
+Scryfall reports `colors` per face on a multi-faced card, so cast colors union
+only the faces that **have a mana cost**: a split card, an adventure, and a modal
+DFC all count both halves, a transform card's back counts for nothing (it is
+turned up, not cast). `scryfall.castColors` and the `store.castColorCol` SQL are
+two copies of this rule — change both.
+
 A color on under 10% of a deck's nonlands (`domain.SplashThreshold`) is a
 **splash**: stored separately in `decklists.splash_colors`, kept out of
 `color_identity`, and excluded from every color analytic except the

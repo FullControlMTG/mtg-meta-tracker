@@ -186,12 +186,16 @@ type groupColorInputs struct {
 // them all under Colorless. Fall back to the union of the faces'.
 // jsonb_array_elements is strict, so a card with no `card_faces` yields no rows
 // there and lands on the empty array.
+//
+// Mirrors scryfall.castColors, including the mana-cost filter: only a face you can
+// actually cast contributes, so a transform card's back (no cost) is left out.
 const castColorCol = `
 	coalesce(
 		c.raw -> 'colors',
 		(SELECT jsonb_agg(col)
 		   FROM jsonb_array_elements(c.raw -> 'card_faces') AS f,
-		        jsonb_array_elements(f -> 'colors') AS col),
+		        jsonb_array_elements(f -> 'colors') AS col
+		  WHERE coalesce(f ->> 'mana_cost', '') <> ''),
 		'[]'::jsonb)`
 
 // The three columns domain.GroupColors needs beyond a card view's own fields.

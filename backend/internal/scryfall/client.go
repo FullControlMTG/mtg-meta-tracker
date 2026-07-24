@@ -99,6 +99,7 @@ type imageURIs struct {
 type cardFace struct {
 	Name       string     `json:"name"`
 	FlavorName string     `json:"flavor_name"`
+	ManaCost   string     `json:"mana_cost"`
 	Colors     []string   `json:"colors"`
 	ImageURIs  *imageURIs `json:"image_uris"`
 }
@@ -474,12 +475,22 @@ func toDomain(sc scryCard, raw json.RawMessage) (domain.Card, error) {
 // The colors of a card's casting cost. Scryfall reports them per face on a
 // double-faced card and omits the top-level field entirely, so taking `colors` at
 // face value files every DFC under colorless; union the faces instead.
+//
+// Only faces that have a mana cost, though — a face you can't cast can't make the
+// deck its colors. That keeps the faces of a split card, an adventure, or a modal
+// DFC (all separately castable, all with their own cost) and drops the back of a
+// transform card, which is turned up rather than cast: Tamiyo, Inquisitive Student
+// is a blue card whose back, Tamiyo, Seasoned Scholar, is GU, and unioning it made
+// every UW deck running her a deck with a green splash.
 func castColors(sc scryCard) domain.ColorIdentity {
 	if len(sc.Colors) > 0 {
 		return domain.ParseColorIdentity(sc.Colors)
 	}
 	var ci domain.ColorIdentity
 	for _, f := range sc.CardFaces {
+		if f.ManaCost == "" {
+			continue
+		}
 		ci = ci.Merge(domain.ParseColorIdentity(f.Colors))
 	}
 	return ci

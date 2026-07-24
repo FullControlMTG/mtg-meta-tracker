@@ -400,6 +400,14 @@ nonland cards count, and they count by the colors of their casting cost (Scryfal
 *produces*, which is how ORing it over every card — the original rule — made a
 Selesnya deck running a Mox Sapphire or a Hallowed Fountain come out blue.
 
+Scryfall drops top-level `colors` on a multi-faced card and reports them per face,
+so cast colors are the union of the faces that **have a mana cost** — both halves
+of a split card, an adventure, or a modal DFC, but not the back of a transform
+card, which is turned up rather than cast. Unioning every face is what made a UW
+deck running Tamiyo, Inquisitive Student (whose back, Tamiyo, Seasoned Scholar, is
+GU) come out with a green splash. `scryfall.castColors` does this at ingest and
+`store.castColorCol` mirrors it in SQL for the recompute path; they must agree.
+
 A color on fewer than 10% of the deck's nonland cards (`domain.SplashThreshold`,
 counting copies) is a **splash**: stored apart in `decklists.splash_colors`, kept
 out of `color_identity`, and excluded from every color analytic except its own
