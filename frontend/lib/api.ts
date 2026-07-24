@@ -216,6 +216,10 @@ export interface MetaSnapshot {
   avg_color_count: number | null;
   mono_share: number | null;
   multi_share: number | null;
+  // Share of decks running any of the Power Nine, and how many decks have played a
+  // game and lost none. Null / 0 on a snapshot computed before these were added.
+  power9_share: number | null;
+  undefeated_decks: number;
 }
 export interface Overview {
   run: RunMeta;

@@ -25,10 +25,12 @@ type DeckRow struct {
 
 // DeckCardRow is one resolved main-board card belonging to a deck. TypeLine is
 // carried so the engine can exclude lands from mana-value averages and basics
-// from the card breakdown; the filtering lives in aggregate, not in SQL.
+// from the card breakdown; the filtering lives in aggregate, not in SQL. Name is
+// the Scryfall name, which is how the Power Nine are recognized.
 type DeckCardRow struct {
 	DecklistID uuid.UUID
 	CardID     uuid.UUID
+	Name       string
 	Quantity   int
 	CMC        *float64
 	TypeLine   *string
@@ -79,6 +81,10 @@ type MetaSnapshotRow struct {
 	AvgColorCount  *float64
 	MonoShare      *float64
 	MultiShare     *float64
+	// Share of decks running at least one of the Power Nine, and the number of
+	// decks that played at least one game and lost none.
+	Power9Share     *float64
+	UndefeatedDecks int
 }
 
 type DeckMetricRow struct {

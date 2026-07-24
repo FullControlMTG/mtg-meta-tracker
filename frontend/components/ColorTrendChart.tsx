@@ -62,14 +62,24 @@ export function ColorTrendChart({ points }: { points: ColorTrendPoint[] }) {
       ? PAD.left + ((days[i] - first) / span) * PLOT_W
       : PAD.left + PLOT_W / 2;
   // Share runs up the axis: 0% on the baseline, 100% at the top, as a share axis
-  // conventionally does. The stack therefore builds from the bottom, and WUBRG reads
-  // bottom-to-top — the same order as the legend.
+  // conventionally does.
   const y = (cum: number) => PAD.top + PLOT_H - cum * PLOT_H;
 
-  // Cumulative share *under* each band, per point, stacked in WUBRG order from the base.
+  // Band order is ranked by where the colors stand *now*, biggest on top: the last
+  // point is the one a reader came for, and a fixed WUBRG stack buries today's biggest
+  // color under four smaller ones. WUBRG breaks ties, so an all-square meta still
+  // draws in the canonical order. `series` is top-to-bottom — legend and tooltip
+  // order — and the stack itself is built from the bottom, so it reads reversed.
+  const last = points.length - 1;
+  const series = [...COLORS].sort(
+    (a, b) => share(points[last], b.bit) - share(points[last], a.bit),
+  );
+  const stack = [...series].reverse();
+
+  // Cumulative share *under* each band, per point.
   const base: number[][] = [];
   let running = points.map(() => 0);
-  for (const c of COLORS) {
+  for (const c of stack) {
     base.push(running);
     running = running.map((v, i) => v + share(points[i], c.bit));
   }
@@ -77,7 +87,7 @@ export function ColorTrendChart({ points }: { points: ColorTrendPoint[] }) {
   const flat = span <= 0;
   const bandPath = (ci: number) => {
     const bottom = base[ci];
-    const top = bottom.map((v, i) => v + share(points[i], COLORS[ci].bit));
+    const top = bottom.map((v, i) => v + share(points[i], stack[ci].bit));
     if (flat) {
       // One point: a rectangle across the plot rather than a zero-width sliver.
       return `M ${PAD.left} ${y(top[0])} L ${PAD.left + PLOT_W} ${y(top[0])} L ${
@@ -162,7 +172,7 @@ export function ColorTrendChart({ points }: { points: ColorTrendPoint[] }) {
           </g>
         ))}
 
-        {COLORS.map((c, ci) => (
+        {stack.map((c, ci) => (
           <path
             key={c.bit}
             d={bandPath(ci)}
@@ -175,8 +185,7 @@ export function ColorTrendChart({ points }: { points: ColorTrendPoint[] }) {
 
         {/* In-band letters — secondary encoding, so a band is identifiable without its
             hue. Only on the last point, and only where the band is tall enough. */}
-        {COLORS.map((c, ci) => {
-          const last = points.length - 1;
+        {stack.map((c, ci) => {
           const s = share(points[last], c.bit);
           if (s < LABEL_MIN_SHARE) return null;
           return (
@@ -261,17 +270,19 @@ export function ColorTrendChart({ points }: { points: ColorTrendPoint[] }) {
         />
       </svg>
 
-      {/* Legend: five series, so identity never rests on the bands alone. */}
+      {/* Legend: five series, so identity never rests on the bands alone. Centered
+          under the plot, and in the bands' own top-to-bottom order. */}
       <div
         style={{
           display: "flex",
           flexWrap: "wrap",
+          justifyContent: "center",
           gap: "0.75rem",
           marginTop: "0.5rem",
           fontSize: "0.78rem",
         }}
       >
-        {COLORS.map((c) => (
+        {series.map((c) => (
           <span
             key={c.bit}
             style={{ display: "flex", alignItems: "center", gap: 5 }}
@@ -301,7 +312,7 @@ export function ColorTrendChart({ points }: { points: ColorTrendPoint[] }) {
             {active.total_decks} deck{active.total_decks === 1 ? "" : "s"} so
             far
           </span>
-          {COLORS.map((c) => (
+          {series.map((c) => (
             <span
               key={c.bit}
               style={{ display: "flex", alignItems: "center", gap: 6 }}

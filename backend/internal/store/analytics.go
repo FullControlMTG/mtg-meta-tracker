@@ -51,7 +51,7 @@ func (s *Store) LoadDecksForAnalytics(ctx context.Context, cubeID uuid.UUID) ([]
 
 func (s *Store) LoadDeckCardsForAnalytics(ctx context.Context, cubeID uuid.UUID) ([]model.DeckCardRow, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT dc.decklist_id, dc.card_id, dc.quantity, c.cmc, c.type_line
+		SELECT dc.decklist_id, dc.card_id, c.name, dc.quantity, c.cmc, c.type_line
 		FROM decklist_cards dc
 		JOIN decklists d ON d.id = dc.decklist_id
 		JOIN cards c ON c.scryfall_id = dc.card_id
@@ -64,7 +64,7 @@ func (s *Store) LoadDeckCardsForAnalytics(ctx context.Context, cubeID uuid.UUID)
 	var out []model.DeckCardRow
 	for rows.Next() {
 		var r model.DeckCardRow
-		if err := rows.Scan(&r.DecklistID, &r.CardID, &r.Quantity, &r.CMC, &r.TypeLine); err != nil {
+		if err := rows.Scan(&r.DecklistID, &r.CardID, &r.Name, &r.Quantity, &r.CMC, &r.TypeLine); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -86,10 +86,10 @@ func (s *Store) FinalizeAnalyticsRun(ctx context.Context, runID, cubeID uuid.UUI
 	m := r.Meta
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO meta_snapshot (run_id, total_decks, total_games, overall_winrate,
-			avg_cmc, avg_color_count, mono_share, multi_share)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+			avg_cmc, avg_color_count, mono_share, multi_share, power9_share, undefeated_decks)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
 		runID, m.TotalDecks, m.TotalGames, m.OverallWinrate, m.AvgCMC, m.AvgColorCount,
-		m.MonoShare, m.MultiShare); err != nil {
+		m.MonoShare, m.MultiShare, m.Power9Share, m.UndefeatedDecks); err != nil {
 		return err
 	}
 
@@ -204,14 +204,20 @@ type MetaSnapshot struct {
 	AvgColorCount  *float64 `json:"avg_color_count"`
 	MonoShare      *float64 `json:"mono_share"`
 	MultiShare     *float64 `json:"multi_share"`
+	// Share of decks running at least one of the Power Nine, and how many decks
+	// have played at least one game without losing any.
+	Power9Share     *float64 `json:"power9_share"`
+	UndefeatedDecks int      `json:"undefeated_decks"`
 }
 
 func (s *Store) GetMetaSnapshot(ctx context.Context, runID uuid.UUID) (*MetaSnapshot, error) {
 	var m MetaSnapshot
 	err := s.pool.QueryRow(ctx, `
-		SELECT total_decks, total_games, overall_winrate, avg_cmc, avg_color_count, mono_share, multi_share
+		SELECT total_decks, total_games, overall_winrate, avg_cmc, avg_color_count, mono_share,
+			multi_share, power9_share, undefeated_decks
 		FROM meta_snapshot WHERE run_id=$1`, runID).Scan(
-		&m.TotalDecks, &m.TotalGames, &m.OverallWinrate, &m.AvgCMC, &m.AvgColorCount, &m.MonoShare, &m.MultiShare)
+		&m.TotalDecks, &m.TotalGames, &m.OverallWinrate, &m.AvgCMC, &m.AvgColorCount, &m.MonoShare,
+		&m.MultiShare, &m.Power9Share, &m.UndefeatedDecks)
 	if err != nil {
 		return nil, normErr(err)
 	}

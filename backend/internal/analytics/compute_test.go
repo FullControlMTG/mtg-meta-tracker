@@ -215,6 +215,34 @@ func TestAggregateExcludesBasicsAndLands(t *testing.T) {
 	}
 }
 
+// Power Nine is a name match, and undefeated means "played and never lost" — a deck
+// with no games recorded has not gone undefeated.
+func TestAggregatePowerNineAndUndefeated(t *testing.T) {
+	perfect, beaten, unplayed := uuid.New(), uuid.New(), uuid.New()
+	decks := []model.DeckRow{
+		{ID: perfect, ColorIdent: 2, Games: 3, Wins: 3, Losses: 0},
+		{ID: beaten, ColorIdent: 8, Games: 3, Wins: 1, Losses: 2},
+		{ID: unplayed, ColorIdent: 1, Games: 0},
+	}
+	cards := []model.DeckCardRow{
+		{DecklistID: perfect, CardID: uuid.New(), Name: "Black Lotus", Quantity: 1, CMC: cmc(0)},
+		{DecklistID: perfect, CardID: uuid.New(), Name: "Brainstorm", Quantity: 1, CMC: cmc(1)},
+		{DecklistID: beaten, CardID: uuid.New(), Name: "Lightning Bolt", Quantity: 1, CMC: cmc(1)},
+		// Case-insensitive: the name comes from Scryfall, but the match must not be
+		// the thing that breaks if a printing ever spells it differently.
+		{DecklistID: unplayed, CardID: uuid.New(), Name: "mox pearl", Quantity: 1, CMC: cmc(0)},
+	}
+	r := aggregate(decks, cards)
+
+	if r.Meta.UndefeatedDecks != 1 {
+		t.Errorf("undefeated_decks = %d, want 1 (the 3-0; the 0-game deck has not played)",
+			r.Meta.UndefeatedDecks)
+	}
+	if r.Meta.Power9Share == nil || math.Abs(*r.Meta.Power9Share-2.0/3) > 1e-9 {
+		t.Errorf("power9_share = %v, want 2/3", r.Meta.Power9Share)
+	}
+}
+
 func TestAggregateEmpty(t *testing.T) {
 	r := aggregate(nil, nil)
 	if r.DecksIncluded != 0 || r.Meta.OverallWinrate != nil {

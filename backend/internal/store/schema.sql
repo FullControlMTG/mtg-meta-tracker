@@ -239,7 +239,9 @@ CREATE TABLE IF NOT EXISTS meta_snapshot (
     avg_cmc         numeric,
     avg_color_count numeric,
     mono_share      numeric,
-    multi_share     numeric
+    multi_share     numeric,
+    power9_share    numeric,             -- 0..1 of decks running any of the Power Nine
+    undefeated_decks int NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS deck_metric_stats (
@@ -376,6 +378,13 @@ ALTER TABLE cube_cards ADD COLUMN IF NOT EXISTS quantity int NOT NULL DEFAULT 1;
 -- one, so it is NOT NULL — nothing downstream has to render a missing date. Decks that
 -- predate the column take their upload date, which is exactly what the new default
 -- would have given them.
+-- Two headline counters added to the meta snapshot: the share of decks running any of
+-- the Power Nine, and how many decks have played a game and lost none. Both are
+-- recomputed by every analytics run, so existing snapshots keep their nulls/zeros only
+-- until the next one — no backfill here.
+ALTER TABLE meta_snapshot ADD COLUMN IF NOT EXISTS power9_share numeric;
+ALTER TABLE meta_snapshot ADD COLUMN IF NOT EXISTS undefeated_decks int NOT NULL DEFAULT 0;
+
 UPDATE decklists SET played_at = created_at::date WHERE played_at IS NULL;
 ALTER TABLE decklists ALTER COLUMN played_at SET DEFAULT CURRENT_DATE;
 ALTER TABLE decklists ALTER COLUMN played_at SET NOT NULL;

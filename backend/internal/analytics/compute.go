@@ -24,6 +24,27 @@ func isBasicLand(typeLine *string) bool {
 	return isLand(typeLine) && strings.Contains(*typeLine, "Basic")
 }
 
+// The Power Nine, by Scryfall name. A fixed, closed list — these nine cards are the
+// definition, not a rule to derive — so it is spelled out rather than inferred from
+// anything on the card. Lower-cased for a case-insensitive match against the list a
+// player pasted.
+var powerNine = map[string]struct{}{
+	"black lotus":      {},
+	"ancestral recall": {},
+	"time walk":        {},
+	"timetwister":      {},
+	"mox pearl":        {},
+	"mox sapphire":     {},
+	"mox jet":          {},
+	"mox ruby":         {},
+	"mox emerald":      {},
+}
+
+func isPowerNine(name string) bool {
+	_, ok := powerNine[strings.ToLower(strings.TrimSpace(name))]
+	return ok
+}
+
 // acc accumulates a win/loss record over a group of decks.
 type acc struct {
 	decks  int
@@ -53,6 +74,7 @@ type deckCards struct {
 	set    map[uuid.UUID]struct{}
 	cmcSum float64
 	qtySum int
+	power9 bool
 }
 
 var singleColorBits = []int{
@@ -138,6 +160,9 @@ func aggregate(decks []model.DeckRow, cards []model.DeckCardRow) *model.Results 
 			d.cmcSum += *dc.CMC * float64(dc.Quantity)
 			d.qtySum += dc.Quantity
 		}
+		if isPowerNine(dc.Name) {
+			d.power9 = true
+		}
 	}
 
 	var (
@@ -150,6 +175,8 @@ func aggregate(decks []model.DeckRow, cards []model.DeckCardRow) *model.Results 
 		multiCount    int
 		cmcDeckSum    float64
 		cmcDeckN      int
+		power9Count   int
+		undefeated    int
 	)
 
 	exact := map[int]*acc{}
@@ -165,6 +192,12 @@ func aggregate(decks []model.DeckRow, cards []model.DeckCardRow) *model.Results 
 		totalGames += d.Games
 		totalWins += d.Wins
 		totalLosses += d.Losses
+
+		// A deck with no games recorded has not gone undefeated, it has not played:
+		// counting it would make every unplayed list a perfect one.
+		if d.Games > 0 && d.Losses == 0 {
+			undefeated++
+		}
 
 		cc := domain.ColorIdentity(d.ColorIdent).Count()
 		colorCountSum += cc
@@ -189,6 +222,9 @@ func aggregate(decks []model.DeckRow, cards []model.DeckCardRow) *model.Results 
 		getAcc(countFacet, cc).add(d)
 
 		dc := perDeck[d.ID]
+		if dc != nil && dc.power9 {
+			power9Count++
+		}
 		if dc != nil && dc.qtySum > 0 {
 			deckAvg := dc.cmcSum / float64(dc.qtySum)
 			cmcDeckSum += deckAvg
@@ -273,7 +309,10 @@ func aggregate(decks []model.DeckRow, cards []model.DeckCardRow) *model.Results 
 	}
 
 	// meta_snapshot
-	meta := model.MetaSnapshotRow{TotalDecks: totalDecks, TotalGames: totalGames, OverallWinrate: mu}
+	meta := model.MetaSnapshotRow{
+		TotalDecks: totalDecks, TotalGames: totalGames, OverallWinrate: mu,
+		UndefeatedDecks: undefeated,
+	}
 	if totalDecks > 0 {
 		acc := float64(colorCountSum) / float64(totalDecks)
 		meta.AvgColorCount = &acc
@@ -281,6 +320,8 @@ func aggregate(decks []model.DeckRow, cards []model.DeckCardRow) *model.Results 
 		multi := float64(multiCount) / float64(totalDecks)
 		meta.MonoShare = &mono
 		meta.MultiShare = &multi
+		p9 := float64(power9Count) / float64(totalDecks)
+		meta.Power9Share = &p9
 	}
 	if cmcDeckN > 0 {
 		avg := cmcDeckSum / float64(cmcDeckN)

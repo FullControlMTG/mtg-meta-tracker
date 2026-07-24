@@ -133,12 +133,15 @@ export default async function CubeStatsPage({ params }: { params: { cube: string
             className="grid"
             style={{
               marginTop: "1.5rem",
-              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+              gap: "0.6rem",
+              gridTemplateColumns: "repeat(auto-fit, minmax(125px, 1fr))",
             }}
           >
-            <StatTile value={String(meta!.total_games)} label="Total matches played" />
+            <StatTile value={String(meta!.total_games)} label="Matches played" />
             <StatTile value={String(meta!.total_decks)} label="Decks recorded" />
             <StatTile value={num(meta!.avg_cmc)} label="Avg. mana value" />
+            <StatTile value={pct(meta!.power9_share, 0)} label="Decks playing Power 9" />
+            <StatTile value={String(meta!.undefeated_decks)} label="Undefeated decks" />
           </div>
 
           <div

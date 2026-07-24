@@ -37,6 +37,12 @@ export function colorByBit(bit: number): ManaColor {
   return COLORS.find((c) => c.bit === bit) ?? COLORLESS;
 }
 
+// How many of the five colors a bitset holds. Colorless is 0 — unlike
+// identityColors, which hands back a single "colorless" swatch to render.
+export function colorCount(bits: number): number {
+  return COLORS.filter((c) => bits & c.bit).length;
+}
+
 // --- cube card grouping ---
 
 export interface CardGroup<T> {

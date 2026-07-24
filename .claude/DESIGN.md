@@ -233,13 +233,20 @@ toward cube staples — it answers "what usually shares a deck with this card", 
 
 ```
 meta_snapshot(run_id, total_decks, total_games, overall_winrate,
-              avg_cmc, avg_color_count, mono_share, multi_share, …)
+              avg_cmc, avg_color_count, mono_share, multi_share,
+              power9_share, undefeated_decks, …)
 
 deck_metric_stats(run_id, metric, bucket, deck_count, winrate)
 ```
 
 Headline meta numbers, plus winrate by bucket (e.g. `metric='avg_cmc'`) so the
 dashboard can chart "does a lower curve win?".
+
+`power9_share` is the fraction of decks running at least one of the Power Nine,
+matched by card name against a hard-coded list in `analytics.powerNine` — the
+nine cards are the definition, so there is nothing on a card to derive it from.
+`undefeated_decks` counts decks with at least one game played and no losses; a
+deck with no record has not gone undefeated, it has not played.
 
 Basic lands are excluded from `card_stats` and `card_pair_stats` — every deck
 plays them, so they would top inclusion and co-occur with everything — and all
@@ -326,7 +333,11 @@ Decks live under `/decks`; the old `/decklists` paths permanently redirect.
 - `/cubes` + `/cubes/[id]` — the pool, same card-fan engine. *(index dynamic;
   detail ISR 300)*
 - `/cards/[slug]` — printings, inclusion rate, most-played-with. *(ISR 300)*
-- `/users/[username]` — bio plus a dense deck list. *(ISR 3600)*
+- `/users/[username]` — bio, that player's own stats (headline tiles, colors
+  played and splashed as radars, a color-pairing heatmap, their combinations
+  ranked), then a dense deck list. The stats are computed in the page from the
+  player's decklists, not from `meta_snapshot`: those are per-cube aggregates
+  over everybody, and a player plays across cubes. *(ISR 3600)*
 - `/login`, `/settings` (change password), `/admin/cubes` (paste and sync a cube,
   with live progress and unresolved names), `/admin/users` (create users, reset
   passwords).
@@ -444,11 +455,20 @@ The frontend reads the calendar day off the string (`isoDay`/`fmtDate`) because
 
 ### No chart library
 
-Charts are hand-rolled SVG (`ColorWinrateChart`, `RadarChart`, `ColorTrendChart`).
-The MTG palette is semantic and cannot be re-picked for contrast — white is a
-near-white and black a near-black — so every fill carries a `--pip-ring` outline,
-and charts add a legend, direct labels, and a tooltip naming every series so
-identity never rests on hue alone.
+Charts are hand-rolled SVG (`ColorWinrateChart`, `RadarChart`, `ColorTrendChart`)
+or CSS grid (`ColorPairHeatmap`). The MTG palette is semantic and cannot be
+re-picked for contrast — white is a near-white and black a near-black — so every
+fill carries a `--pip-ring` outline, and charts add a legend, direct labels, and a
+tooltip naming every series so identity never rests on hue alone.
+
+The one place the mana colors are *not* used is `ColorPairHeatmap`: its cells
+encode a count, so they take a single-hue `--accent` ramp and let the axes carry
+the colors being crossed. The ramp stops well short of solid so the number printed
+in each cell keeps its contrast on both surfaces.
+
+`ColorTrendChart` stacks its bands by where each color stands on the most recent
+point, largest on top, rather than in fixed WUBRG order — the last point is the
+one a reader came for. Legend and tooltip follow the same order.
 
 ## Dependencies
 
