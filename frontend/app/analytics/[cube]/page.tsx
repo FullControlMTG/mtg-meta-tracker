@@ -164,12 +164,11 @@ export default async function CubeStatsPage({ params }: { params: { cube: string
             <section className="card">
               <h2>Color Breakdown</h2>
               <p className="muted" style={{ marginTop: "-0.25rem" }}>
-                Breakdown of which colors are played among recorded decks. Multicolored
-                lists count for each color.
+                Percentage of decks playing each color. Does not include splash colors.
               </p>
               <RadarChart
                 axes={colorAxes(colorStats, meta!.total_decks)}
-                caption="Decks playing each color of the WUBRG pie"
+                caption="Deck color distribution"
               />
             </section>
 
@@ -180,16 +179,14 @@ export default async function CubeStatsPage({ params }: { params: { cube: string
               </p>
               <RadarChart
                 axes={colorCountAxes(colorStats, meta!.total_decks)}
-                caption="Decks by number of colors played, one through five"
+                caption="Deck color choices distribution"
               />
             </section>
 
             <section className="card">
               <h2>Splashed Colors</h2>
               <p className="muted" style={{ marginTop: "-0.25rem" }}>
-                Which colors get splashed rather than built on — a color on fewer than
-                10% of a deck&apos;s nonland cards. Splashes are left out of the
-                breakdown above.
+                Percentage of decks splashing each color (less than 10% representation).
               </p>
               <RadarChart
                 axes={splashAxes(colorStats, meta!.total_decks)}
@@ -201,10 +198,8 @@ export default async function CubeStatsPage({ params }: { params: { cube: string
           <section className="card" style={{ marginTop: "1.5rem" }}>
             <h2>Color Share Over Time</h2>
             <p className="muted" style={{ marginTop: "-0.25rem" }}>
-              Each color&apos;s slice of the pie as the meta filled in, by the date decks
-              were played. Cumulative: every point counts the decks played up to that day,
-              and a multicolored deck counts for each of its colors — so the five shares
-              are of the colors played, not of the decks. Splashes are excluded.
+              Stacked percentages of each color's share of the meta, tracked over time. 
+              Splash colors are excluded.
             </p>
             <ColorTrendChart points={trendPoints} />
           </section>
