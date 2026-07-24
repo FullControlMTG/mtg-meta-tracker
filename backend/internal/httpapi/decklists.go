@@ -23,11 +23,21 @@ func (s *Server) enqueueRecompute(r *http.Request, cubeID uuid.UUID, trigger str
 
 func (s *Server) decklistView(r *http.Request, d *domain.Decklist) map[string]any {
 	cards, _ := s.store.GetDecklistCardsView(r.Context(), d.ID)
+	ids := make([]uuid.UUID, 0, len(cards))
+	for _, c := range cards {
+		if c.IsResolved && c.Board == domain.BoardMain && c.CardID != nil {
+			ids = append(ids, *c.CardID)
+		}
+	}
+	// Main board only, like colors and card stats: a piece sitting in the
+	// sideboard is not a combo the deck can assemble.
+	combos, _ := s.store.MatchCombos(r.Context(), d.CubeID, ids)
 	view := map[string]any{
 		"decklist":      d,
 		"color_string":  domain.ColorIdentity(d.ColorIdentity).String(),
 		"splash_string": domain.ColorIdentity(d.SplashColors).String(),
 		"cards":         cards,
+		"combos":        combos,
 	}
 	if u, err := s.store.GetUserByID(r.Context(), d.UserID); err == nil {
 		view["user"] = u.Public()
@@ -474,11 +484,19 @@ func (s *Server) handleInferColors(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var resolvedNames []string
+	var mainIDs []uuid.UUID
 	for _, c := range resolved.Cards {
-		if c.IsResolved {
-			resolvedNames = append(resolvedNames, c.CardName)
+		if !c.IsResolved {
+			continue
+		}
+		resolvedNames = append(resolvedNames, c.CardName)
+		if c.Board == domain.BoardMain && c.CardID != nil {
+			mainIDs = append(mainIDs, *c.CardID)
 		}
 	}
+	// The same match the saved deck will report, so the form can name the combos
+	// a list assembles while it is still being typed.
+	combos, _ := s.store.MatchCombos(r.Context(), cubeID, mainIDs)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"color_identity": resolved.ColorIdentity,
 		"color_string":   domain.ColorIdentity(resolved.ColorIdentity).String(),
@@ -486,6 +504,7 @@ func (s *Server) handleInferColors(w http.ResponseWriter, r *http.Request) {
 		"splash_string":  domain.ColorIdentity(resolved.SplashColors).String(),
 		"resolved":       resolvedNames,
 		"unresolved":     resolved.Unresolved,
+		"combos":         combos,
 	})
 }
 

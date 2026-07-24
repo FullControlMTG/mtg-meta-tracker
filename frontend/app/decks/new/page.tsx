@@ -175,18 +175,24 @@ export default function NewDeckPage() {
         />
 
         {infer && (
-          <div
-            className="card"
-            style={{ marginTop: "0.75rem", display: "flex", alignItems: "center", gap: 10 }}
-          >
-            <ColorPips bits={infer.color_identity} splash={infer.splash_colors} showCode />
-            <span className="muted">
-              {(infer.resolved?.length ?? 0)} resolved
-              {infer.unresolved && infer.unresolved.length > 0 && (
-                <> · {infer.unresolved.length} unresolved: {infer.unresolved.slice(0, 5).join(", ")}
-                  {infer.unresolved.length > 5 ? "…" : ""}</>
-              )}
-            </span>
+          <div className="card" style={{ marginTop: "0.75rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <ColorPips bits={infer.color_identity} splash={infer.splash_colors} showCode />
+              <span className="muted">
+                {(infer.resolved?.length ?? 0)} resolved
+                {infer.unresolved && infer.unresolved.length > 0 && (
+                  <> · {infer.unresolved.length} unresolved: {infer.unresolved.slice(0, 5).join(", ")}
+                    {infer.unresolved.length > 5 ? "…" : ""}</>
+                )}
+              </span>
+            </div>
+            {/* The combos this list already assembles. The deck page shows them with
+                card previews; here it is only confirmation as the list is typed. */}
+            {infer.combos?.length > 0 && (
+              <p className="muted" style={{ margin: "0.5rem 0 0", fontSize: "0.85rem" }}>
+                Combos: {infer.combos.map((c) => c.name).join(", ")}
+              </p>
+            )}
           </div>
         )}
 

@@ -7,6 +7,7 @@ import { useSession } from "@/components/SessionProvider";
 
 const tabs = [
   { href: "/admin/cubes", label: "Cubes" },
+  { href: "/admin/combos", label: "Combos" },
   { href: "/admin/users", label: "Users" },
 ];
 

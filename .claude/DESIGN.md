@@ -121,6 +121,8 @@ colorless = 0.
 | `cube_sync_progress` | live progress for the admin sync UI | `cube_id (pk), status, cards_total, images_total/done/failed, unresolved text[]` |
 | `decklists` | deck + metadata + record | see below |
 | `decklist_cards` | normalized deck contents | `decklist_id, card_id, card_name, quantity, is_resolved, board` |
+| `combos` | an admin-named set of cards, per cube | `id, cube_id, name, description`, `UNIQUE (cube_id, name)` |
+| `combo_cards` | the pieces of one combo | `combo_id, card_id, position` |
 
 `cards.slug` is a **generated** `STORED` column powering `/cards/<slug>`, so it
 cannot drift from the name. It is not unique — two printings of a name are two
@@ -285,6 +287,7 @@ jobs worker ──▶ analytics recompute ──▶ new run promoted to is_curre
 GET  /api/health
 GET  /api/users                     GET /api/users/{username}
 GET  /api/cubes                     GET /api/cubes/{id}   GET /api/cubes/{id}/cards
+GET  /api/cubes/{id}/combos         (configured combos + their pieces)
 GET  /api/cards/{slug}              GET /api/cards/{id}/image   (self-hosted cache)
 GET  /api/decklists                 GET /api/decklists/{id}
      (?cube= ?user= ; each item carries its owner and cube name for the
@@ -314,6 +317,8 @@ Admin only:
 DELETE /api/users/{id}              POST /api/admin/users
 POST   /api/admin/cubes             PATCH /api/admin/cubes/{id}   DELETE /api/admin/cubes/{id}
 POST   /api/admin/cubes/{id}/sync   GET  /api/admin/cubes/{id}/sync-status
+POST   /api/admin/cubes/{id}/combos
+PATCH  /api/admin/combos/{id}       DELETE /api/admin/combos/{id}
 POST   /api/admin/analytics/recompute
 ```
 
@@ -342,8 +347,8 @@ Decks live under `/decks`; the old `/decklists` paths permanently redirect.
   player's decklists, not from `meta_snapshot`: those are per-cube aggregates
   over everybody, and a player plays across cubes. *(ISR 3600)*
 - `/login`, `/settings` (change password), `/admin/cubes` (paste and sync a cube,
-  with live progress and unresolved names), `/admin/users` (create users, reset
-  passwords).
+  with live progress and unresolved names), `/admin/combos` (name the card sets
+  that mark a sub-archetype), `/admin/users` (create users, reset passwords).
 
 ## Key decisions
 
@@ -357,6 +362,26 @@ every snapshot for the cube, writes a new `analytics_runs` row, and promotes it 
 Trade-off: the whole cube is recomputed for a single deck edit. At this scale that
 is cheap, and it makes every snapshot mutually consistent — no partially-updated
 run is ever visible.
+
+### Combos are matched on read, not stored per deck
+
+A deck's colors are inferred once and written to its row; its combos are not.
+`store.MatchCombos` runs the match every time a deck is read, against the cube's
+current definitions — the same call the live inference preview makes while a list
+is being typed, so the form and the saved page cannot disagree.
+
+The reason is that combos are configured after the fact. An admin adds "Thoracle"
+long after the decks that play it were uploaded, and a stored answer would leave
+every one of them wrong until each was saved again — the problem
+`RecomputeDeckColors` exists to clean up for colors. Reading is cheap enough to
+make that unnecessary: a deck holds forty cards and a cube a handful of combos.
+
+Pieces are matched on `oracle_id`, not `scryfall_id` (`store.comboKeyExpr`): a
+combo names one printing and a deck resolves its own, so matching on the printing
+would miss decks that genuinely run the combo. Only the mainboard counts, as with
+colors and card stats — a piece in the sideboard is not a combo the deck can
+assemble. Editing a definition revalidates every deck page in that cube, which is
+what keeps ISR from serving the old answer for an hour.
 
 ### Rendering is chosen per page
 

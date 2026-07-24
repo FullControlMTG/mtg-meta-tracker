@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { apiGetOptional, type DecklistCard, type DecklistDetail } from "@/lib/api";
 import { ColorPips } from "@/components/ColorPips";
 import { CardBrowser } from "@/components/CardBrowser";
+import { ComboList } from "@/components/ComboList";
 import { StatTile } from "@/components/StatTile";
 import { OwnerActions } from "@/components/OwnerActions";
 import { sortCards } from "@/lib/colors";
@@ -25,6 +26,10 @@ export default async function DecklistDetailPage({ params }: { params: { id: str
   if (!detail) notFound();
 
   const { decklist: d, cards, user } = detail;
+  // Matched fresh on every read against the cube's configured combos, so this
+  // list reflects the current definitions rather than what they said when the
+  // deck was uploaded. Absent on a response from a backend older than combos.
+  const combos = detail.combos ?? [];
   // Each board reads in the cube's display order (color → cmc → name) rather than
   // the backend's flat alphabetical one.
   const sections = BOARDS.map((b) => ({
@@ -79,6 +84,8 @@ export default async function DecklistDetailPage({ params }: { params: { id: str
           <CardBrowser sections={sections} maxCols={DECK_MAX_COLS} countQuantity searchable={false} />
         </div>
       )}
+
+      <ComboList combos={combos} />
 
       {unresolved.length > 0 && (
         <p className="muted" style={{ marginTop: "1.5rem", fontSize: "0.85rem" }}>

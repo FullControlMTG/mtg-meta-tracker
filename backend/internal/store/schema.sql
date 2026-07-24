@@ -158,6 +158,36 @@ CREATE TABLE IF NOT EXISTS decklist_cards (
 CREATE INDEX IF NOT EXISTS idx_decklist_cards_card ON decklist_cards(card_id);
 
 -- ---------------------------------------------------------------------------
+-- Combos (admin-configured sets of cards that mark a sub-archetype)
+-- ---------------------------------------------------------------------------
+-- An admin names a set of N cards; a deck whose main board plays all N is
+-- reported as running that combo. Cube-scoped, because the pieces are picked
+-- from a cube's pool — the same pair configured for two cubes is two rows.
+CREATE TABLE IF NOT EXISTS combos (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    cube_id     uuid NOT NULL REFERENCES cubes(id) ON DELETE CASCADE,
+    name        text NOT NULL,
+    description text,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (cube_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_combos_cube ON combos(cube_id);
+
+-- One piece of a combo. card_id is the exact printing the admin picked (which is
+-- what the previews render), but a deck is matched on oracle identity — see
+-- store.comboKeyExpr — so a deck resolving another printing still counts.
+-- No FK cascade from cards: a printing that leaves the pool is only deactivated,
+-- never deleted, so a combo outlives a cube re-sync that drops one of its pieces.
+CREATE TABLE IF NOT EXISTS combo_cards (
+    combo_id uuid NOT NULL REFERENCES combos(id) ON DELETE CASCADE,
+    card_id  uuid NOT NULL REFERENCES cards(scryfall_id),
+    position int NOT NULL DEFAULT 0,   -- display order within "A + B + C"
+    PRIMARY KEY (combo_id, card_id)
+);
+CREATE INDEX IF NOT EXISTS idx_combo_cards_card ON combo_cards(card_id);
+
+-- ---------------------------------------------------------------------------
 -- Analytics snapshots (see .claude/DESIGN.md)
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS analytics_runs (

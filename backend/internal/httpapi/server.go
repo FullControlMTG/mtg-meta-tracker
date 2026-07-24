@@ -54,6 +54,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/cubes", s.handleListCubes)
 		r.Get("/cubes/{id}", s.handleGetCube)
 		r.Get("/cubes/{id}/cards", s.handleGetCubeCards)
+		r.Get("/cubes/{id}/combos", s.handleListCombos)
 
 		r.Get("/cards/{id}/image", s.handleCardImage)
 		r.Get("/cards/{slug}", s.handleGetCard)
@@ -83,6 +84,10 @@ func (s *Server) Router() http.Handler {
 			r.Delete("/admin/cubes/{id}", s.handleDeleteCube)
 			r.Post("/admin/cubes/{id}/sync", s.handleSyncCube)
 			r.Get("/admin/cubes/{id}/sync-status", s.handleCubeSyncStatus)
+
+			r.Post("/admin/cubes/{id}/combos", s.handleCreateCombo)
+			r.Patch("/admin/combos/{id}", s.handlePatchCombo)
+			r.Delete("/admin/combos/{id}", s.handleDeleteCombo)
 
 			r.Post("/admin/analytics/recompute", s.handleRecomputeAnalytics)
 		})

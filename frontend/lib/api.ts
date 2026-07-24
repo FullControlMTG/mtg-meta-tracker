@@ -169,6 +169,29 @@ export interface DecklistCard {
   set_code?: string;
   collector_number?: string;
 }
+// One card of a combo, at the printing the admin configured it from. The field
+// names mirror DecklistCard/CubeCard so a piece renders through the same card
+// components as the rest of the app.
+export interface ComboPiece {
+  card_id: string;
+  card_name: string;
+  slug: string;
+  image_normal?: string;
+  set_code?: string;
+  collector_number?: string;
+  color_identity: number;
+}
+// A named set of cards an admin has registered as a combo for a cube. A deck
+// reports it when its main board plays every piece; the match is computed on
+// read, so editing a definition changes every deck's answer at once.
+export interface Combo {
+  id: string;
+  cube_id: string;
+  name: string;
+  description?: string;
+  cards: ComboPiece[];
+}
+
 // The server's own calendar day, in the playgroup's timezone. A date picker opens on
 // it so the form and the backend's default agree — the browser's today is its own
 // timezone's, which is a different day for anyone travelling.
@@ -197,6 +220,9 @@ export interface DecklistDetail {
   decklist: Decklist;
   color_string: string;
   cards: DecklistCard[];
+  // The configured combos this deck's main board assembles. Always present,
+  // possibly empty.
+  combos: Combo[];
   user?: PublicUser;
   // Names the save could not match to a card. Present on the create/update
   // responses; absent on plain reads.
@@ -326,4 +352,6 @@ export interface InferResult {
   splash_string: string;
   resolved: string[] | null;
   unresolved: string[] | null;
+  // Combos the list assembles as typed — the same match the saved deck reports.
+  combos: Combo[];
 }

@@ -10,6 +10,9 @@ Tracks the metagame of one local MTG cube playgroup:
   losses per deck.
 - The backend infers each deck's colors from the casting costs of its nonland
   cards, splitting off sub-threshold colors as splashes.
+- An admin can register named combos — sets of cards that play together — and
+  every deck holding all the pieces reports them, naming a sub-archetype the
+  colors and the archetype tag cannot.
 - An analytics engine recomputes snapshots per cube: color share (four facets),
   color share over time, card popularity and record, card co-occurrence, and
   deck-level metrics.

@@ -116,6 +116,15 @@ peeks out, lifting on hover.
 fill drawn in the MTG palette. White is a near-white and black a near-black, so
 without it they disappear into one of the two surfaces.
 
+**Combo** — a named set of two or more cards an admin registers for a cube
+(`/admin/combos`). A deck whose *mainboard* plays every piece reports it on its
+page, which is how a sub-archetype the five archetype tags cannot express gets
+named. Matched on read rather than stored per deck, and on `oracle_id` rather than
+printing — see [DESIGN.md](DESIGN.md#combos-are-matched-on-read-not-stored-per-deck).
+
+**Piece** — one card of a combo, a `combo_cards` row. It points at the exact
+printing the admin picked, which is what the previews under a deck render.
+
 **Splash threshold** — `domain.SplashThreshold`, 0.10.
 
 **Deck query** — the `field:value` filter language the deck table reads, defined in
