@@ -62,6 +62,23 @@ func (s *Server) handleAnalyticsColors(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, stats)
 }
 
+func (s *Server) handleAnalyticsColorTrend(w http.ResponseWriter, r *http.Request) {
+	cubeID, ok := cubeParam(w, r)
+	if !ok {
+		return
+	}
+	runID, ok := s.currentRun(w, r, cubeID)
+	if !ok {
+		return
+	}
+	trend, err := s.store.ListColorTrend(r.Context(), runID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "could not load color trend")
+		return
+	}
+	writeJSON(w, http.StatusOK, trend)
+}
+
 func (s *Server) handleAnalyticsCards(w http.ResponseWriter, r *http.Request) {
 	cubeID, ok := cubeParam(w, r)
 	if !ok {

@@ -8,6 +8,10 @@ import { matchesQuery } from "@/lib/search";
 // across all of them: a section whose cards all filter out drops away, so what is left on
 // screen is only ever the matches. Both pages sort and group server-side and hand the
 // result here — this component decides nothing about order, only about what is shown.
+//
+// The search is opt-in (`searchable`). A cube pool is hundreds of cards and unreadable
+// without it; a decklist is forty you can already see, so there it is off and the bar —
+// input and running count both — does not render at all.
 
 export interface CardSection {
   key: string;
@@ -25,24 +29,28 @@ export function CardBrowser({
   sections,
   maxCols,
   countQuantity = false,
+  searchable = true,
   placeholder = "Search cards…",
 }: {
   sections: CardSection[];
   maxCols?: number;
   countQuantity?: boolean;
+  searchable?: boolean;
   placeholder?: string;
 }) {
   const [query, setQuery] = useState("");
   // Typing stays responsive while a few hundred card images re-flow behind it.
   const deferred = useDeferredValue(query);
-  const filtering = deferred.trim() !== "";
+  const filtering = searchable && deferred.trim() !== "";
 
   const shown = useMemo(
     () =>
-      sections
-        .map((s) => ({ ...s, cards: s.cards.filter((c) => matchesQuery(c.card_name, deferred)) }))
-        .filter((s) => s.cards.length > 0),
-    [sections, deferred],
+      !filtering
+        ? sections.filter((s) => s.cards.length > 0)
+        : sections
+            .map((s) => ({ ...s, cards: s.cards.filter((c) => matchesQuery(c.card_name, deferred)) }))
+            .filter((s) => s.cards.length > 0),
+    [sections, deferred, filtering],
   );
 
   const total = sections.reduce((n, s) => n + count(s.cards, countQuantity), 0);
@@ -50,22 +58,27 @@ export function CardBrowser({
 
   return (
     <>
-      <div className="search-bar">
-        <input
-          className="search"
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={placeholder}
-          aria-label="Search cards by name"
-        />
-        <span className="muted" style={{ fontSize: "0.85rem" }}>
-          {filtering ? `${matched} of ${total}` : `${total} cards`}
-        </span>
-      </div>
+      {searchable && (
+        <div className="search-bar">
+          <input
+            className="search"
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={placeholder}
+            aria-label="Search cards by name"
+          />
+          <span className="muted" style={{ fontSize: "0.85rem" }}>
+            {filtering ? `${matched} of ${total}` : `${total} cards`}
+          </span>
+        </div>
+      )}
 
       {shown.length === 0 ? (
-        <p className="muted">No cards match “{deferred.trim()}”.</p>
+        // Empty with the search off is not a failed search — say the true thing.
+        <p className="muted">
+          {filtering ? `No cards match “${deferred.trim()}”.` : "No cards."}
+        </p>
       ) : (
         <div className="card-sections">
           {shown.map((s) => (

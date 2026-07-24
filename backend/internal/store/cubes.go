@@ -91,9 +91,22 @@ func (s *Store) ClearCubeContentHash(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+// CountActiveCubeCards counts the cube's distinct printings — one per cube_cards
+// row, which is what a resolve produces and what sync progress is measured in.
 func (s *Store) CountActiveCubeCards(ctx context.Context, cubeID uuid.UUID) (int, error) {
 	var n int
 	err := s.pool.QueryRow(ctx,
 		`SELECT count(*) FROM cube_cards WHERE cube_id=$1 AND is_active`, cubeID).Scan(&n)
+	return n, err
+}
+
+// CountActiveCubeCopies counts physical cards: 150 Ornithopters are 150. This is the
+// "how big is this cube" number the cube pages show; for a singleton cube — nearly all
+// of them — it is identical to CountActiveCubeCards.
+func (s *Store) CountActiveCubeCopies(ctx context.Context, cubeID uuid.UUID) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx,
+		`SELECT coalesce(sum(quantity), 0) FROM cube_cards WHERE cube_id=$1 AND is_active`,
+		cubeID).Scan(&n)
 	return n, err
 }

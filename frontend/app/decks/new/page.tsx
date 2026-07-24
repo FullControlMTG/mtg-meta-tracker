@@ -11,6 +11,7 @@ import {
   type PublicUser,
   type InferResult,
   type DecklistDetail,
+  type Today,
 } from "@/lib/api";
 import { ARCHETYPES } from "@/lib/decklist";
 import { ColorPips } from "@/components/ColorPips";
@@ -26,6 +27,10 @@ export default function NewDeckPage() {
   const [userId, setUserId] = useState("");
   const [name, setName] = useState("");
   const [archetype, setArchetype] = useState("");
+  // The day it was played. Seeded from the server (GET /today) rather than from this
+  // browser: the deck belongs to a playgroup in one timezone, and the backend defaults
+  // the field to that timezone's today if this arrives empty.
+  const [playedAt, setPlayedAt] = useState("");
   const [raw, setRaw] = useState("");
   // Optional record, if the deck has already been played.
   const [wins, setWins] = useState("");
@@ -36,6 +41,7 @@ export default function NewDeckPage() {
   const timer = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
+    apiGetOptional<Today>("/today").then((t) => t && setPlayedAt(t.date));
     apiGetOptional<PublicUser>("/auth/me").then((u) => {
       setMe(u);
       if (!u) return;
@@ -77,6 +83,9 @@ export default function NewDeckPage() {
         name,
         archetype,
         decklist_raw: raw,
+        // Blank only if /today has not answered yet, in which case the backend fills
+        // in the same date this input would have shown.
+        played_at: playedAt,
       };
       // Only admins may name an owner; the backend defaults it to the caller.
       if (me?.role === "admin" && userId) body.user_id = userId;
@@ -144,6 +153,15 @@ export default function NewDeckPage() {
             </option>
           ))}
         </select>
+
+        <label htmlFor="played">Date played</label>
+        <input
+          id="played"
+          type="date"
+          value={playedAt}
+          onChange={(e) => setPlayedAt(e.target.value)}
+          required
+        />
 
         <label htmlFor="list">Decklist</label>
         <textarea

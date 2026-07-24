@@ -30,8 +30,9 @@ func (s *Store) SetAnalyticsRunFailed(ctx context.Context, runID uuid.UUID) erro
 
 func (s *Store) LoadDecksForAnalytics(ctx context.Context, cubeID uuid.UUID) ([]model.DeckRow, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, color_identity, splash_colors, games_played, wins, losses
-		FROM decklists WHERE cube_id=$1 AND status IN ('active','archived')`, cubeID)
+		SELECT id, color_identity, splash_colors, played_at, games_played, wins, losses
+		FROM decklists WHERE cube_id=$1 AND status IN ('active','archived')
+		ORDER BY played_at`, cubeID)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +40,8 @@ func (s *Store) LoadDecksForAnalytics(ctx context.Context, cubeID uuid.UUID) ([]
 	var out []model.DeckRow
 	for rows.Next() {
 		var d model.DeckRow
-		if err := rows.Scan(&d.ID, &d.ColorIdent, &d.SplashIdent, &d.Games, &d.Wins, &d.Losses); err != nil {
+		if err := rows.Scan(&d.ID, &d.ColorIdent, &d.SplashIdent, &d.PlayedAt,
+			&d.Games, &d.Wins, &d.Losses); err != nil {
 			return nil, err
 		}
 		out = append(out, d)
@@ -96,6 +98,14 @@ func (s *Store) FinalizeAnalyticsRun(ctx context.Context, runID, cubeID uuid.UUI
 			INSERT INTO color_stats (run_id, facet, facet_key, deck_count, games, wins, losses, winrate)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
 			runID, c.Facet, c.FacetKey, c.DeckCount, c.Games, c.Wins, c.Losses, c.Winrate); err != nil {
+			return err
+		}
+	}
+	for _, t := range r.ColorTrend {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO color_trend_stats (run_id, as_of, color, deck_count, total_decks, share)
+			VALUES ($1,$2,$3,$4,$5,$6)`,
+			runID, t.AsOf, t.Color, t.DeckCount, t.TotalDecks, t.Share); err != nil {
 			return err
 		}
 	}
@@ -237,6 +247,55 @@ func (s *Store) ListColorStats(ctx context.Context, runID uuid.UUID, facet strin
 			return nil, err
 		}
 		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// ColorTrendColor is one color's standing on one day of the trend.
+type ColorTrendColor struct {
+	Color     int      `json:"color"` // a single WUBRG bit
+	DeckCount int      `json:"deck_count"`
+	Share     *float64 `json:"share"` // 0..1 of that day's color pie; null on a day with no colored decks
+}
+
+// ColorTrendPoint is one day of the color trend: every color, always in WUBRG order,
+// so a client can stack them without sorting or filling gaps.
+//
+// AsOf is a plain "2006-01-02". The column is a DATE and the day is the whole of the
+// meaning; serving a timestamp would hand every client west of UTC the previous day
+// the moment it parsed it.
+type ColorTrendPoint struct {
+	AsOf       string            `json:"as_of"`
+	TotalDecks int               `json:"total_decks"`
+	Colors     []ColorTrendColor `json:"colors"`
+}
+
+// ListColorTrend returns the run's color trend, one point per day, oldest first.
+func (s *Store) ListColorTrend(ctx context.Context, runID uuid.UUID) ([]ColorTrendPoint, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT as_of, color, deck_count, total_decks, share
+		FROM color_trend_stats WHERE run_id=$1
+		ORDER BY as_of, color`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	// Non-nil so an empty trend encodes as [] rather than null.
+	out := []ColorTrendPoint{}
+	for rows.Next() {
+		var day time.Time
+		var c ColorTrendColor
+		var total int
+		if err := rows.Scan(&day, &c.Color, &c.DeckCount, &total, &c.Share); err != nil {
+			return nil, err
+		}
+		key := day.Format("2006-01-02")
+		// Rows arrive grouped by day (ORDER BY as_of), so only the last point can match.
+		if n := len(out); n > 0 && out[n-1].AsOf == key {
+			out[n-1].Colors = append(out[n-1].Colors, c)
+			continue
+		}
+		out = append(out, ColorTrendPoint{AsOf: key, TotalDecks: total, Colors: []ColorTrendColor{c}})
 	}
 	return out, rows.Err()
 }

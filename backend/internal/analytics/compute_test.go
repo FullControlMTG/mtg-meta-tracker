@@ -3,6 +3,7 @@ package analytics
 import (
 	"math"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -218,5 +219,118 @@ func TestAggregateEmpty(t *testing.T) {
 	r := aggregate(nil, nil)
 	if r.DecksIncluded != 0 || r.Meta.OverallWinrate != nil {
 		t.Fatalf("empty aggregate should have nil winrate and 0 decks")
+	}
+	if len(r.ColorTrend) != 0 {
+		t.Errorf("empty aggregate should have no trend points, got %d", len(r.ColorTrend))
+	}
+}
+
+func day(s string) time.Time {
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		panic(err)
+	}
+	return t
+}
+
+// Three decks over two days: a mono-W and a UB on the 1st, then a WU on the 3rd. The
+// 2nd is absent — nothing was played, so nothing changed.
+func TestColorTrendIsCumulativeAndStacksTo100(t *testing.T) {
+	decks := []model.DeckRow{
+		{ID: uuid.New(), ColorIdent: 1, PlayedAt: day("2026-07-01")},     // W
+		{ID: uuid.New(), ColorIdent: 2 | 4, PlayedAt: day("2026-07-01")}, // UB
+		{ID: uuid.New(), ColorIdent: 1 | 2, PlayedAt: day("2026-07-03")}, // WU
+	}
+	trend := aggregate(decks, nil).ColorTrend
+
+	byDay := map[string]map[int]model.ColorTrendRow{}
+	for _, row := range trend {
+		k := row.AsOf.Format("2006-01-02")
+		if byDay[k] == nil {
+			byDay[k] = map[int]model.ColorTrendRow{}
+		}
+		byDay[k][row.Color] = row
+	}
+	if len(byDay) != 2 {
+		t.Fatalf("got %d days, want 2 (only days a deck was played)", len(byDay))
+	}
+	// Every color on every day, zeros included: an area band needs a point at each x.
+	for k, day := range byDay {
+		if len(day) != 5 {
+			t.Errorf("%s has %d colors, want all 5", k, len(day))
+		}
+		var sum float64
+		for _, row := range day {
+			if row.Share != nil {
+				sum += *row.Share
+			}
+		}
+		if math.Abs(sum-1) > 1e-9 {
+			t.Errorf("%s shares sum to %v, want 1", k, sum)
+		}
+	}
+
+	// Day one: W=1, U=1, B=1 of a 3-slice pie; two decks.
+	d1 := byDay["2026-07-01"]
+	if d1[1].DeckCount != 1 || d1[2].DeckCount != 1 || d1[4].DeckCount != 1 {
+		t.Errorf("day 1 counts: W=%d U=%d B=%d, want 1/1/1",
+			d1[1].DeckCount, d1[2].DeckCount, d1[4].DeckCount)
+	}
+	if d1[8].DeckCount != 0 || d1[16].DeckCount != 0 {
+		t.Errorf("day 1: R and G should be 0, got %d/%d", d1[8].DeckCount, d1[16].DeckCount)
+	}
+	if d1[1].TotalDecks != 2 {
+		t.Errorf("day 1 total_decks = %d, want 2", d1[1].TotalDecks)
+	}
+	if s := *d1[1].Share; math.Abs(s-1.0/3) > 1e-9 {
+		t.Errorf("day 1 W share = %v, want 1/3", s)
+	}
+
+	// Day three carries day one forward and adds the WU: W=2, U=2, B=1 of 5.
+	d3 := byDay["2026-07-03"]
+	if d3[1].DeckCount != 2 || d3[2].DeckCount != 2 || d3[4].DeckCount != 1 {
+		t.Errorf("day 3 counts: W=%d U=%d B=%d, want 2/2/1",
+			d3[1].DeckCount, d3[2].DeckCount, d3[4].DeckCount)
+	}
+	if d3[1].TotalDecks != 3 {
+		t.Errorf("day 3 total_decks = %d, want 3", d3[1].TotalDecks)
+	}
+	if s := *d3[1].Share; math.Abs(s-0.4) > 1e-9 {
+		t.Errorf("day 3 W share = %v, want 0.4 (2 of 5 color slots)", s)
+	}
+}
+
+// A colorless deck counts toward the deck total but has no slice of the pie, and a day
+// with nothing but colorless decks has no pie at all.
+func TestColorTrendColorlessOnly(t *testing.T) {
+	decks := []model.DeckRow{{ID: uuid.New(), ColorIdent: 0, PlayedAt: day("2026-07-01")}}
+	trend := aggregate(decks, nil).ColorTrend
+
+	if len(trend) != 5 {
+		t.Fatalf("got %d rows, want 5 (one day, five colors)", len(trend))
+	}
+	for _, row := range trend {
+		if row.DeckCount != 0 {
+			t.Errorf("color %d: count %d, want 0", row.Color, row.DeckCount)
+		}
+		if row.Share != nil {
+			t.Errorf("color %d: share %v, want null on an empty pie", row.Color, *row.Share)
+		}
+		if row.TotalDecks != 1 {
+			t.Errorf("color %d: total_decks %d, want 1", row.Color, row.TotalDecks)
+		}
+	}
+}
+
+// Splashes are not the deck's colors and must stay out of the trend, exactly as they
+// stay out of the single_color facet.
+func TestColorTrendExcludesSplashes(t *testing.T) {
+	decks := []model.DeckRow{
+		{ID: uuid.New(), ColorIdent: 1 | 2, SplashIdent: 16, PlayedAt: day("2026-07-01")},
+	}
+	for _, row := range aggregate(decks, nil).ColorTrend {
+		if row.Color == 16 && row.DeckCount != 0 {
+			t.Errorf("splashed green should not appear in the trend, got %d", row.DeckCount)
+		}
 	}
 }

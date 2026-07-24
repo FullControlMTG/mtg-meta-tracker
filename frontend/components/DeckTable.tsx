@@ -5,7 +5,7 @@ import { ColorPips } from "@/components/ColorPips";
 import { SortHeader } from "@/components/SortHeader";
 import type { DecklistListItem } from "@/lib/api";
 import { compareIdentity } from "@/lib/colors";
-import { pct } from "@/lib/format";
+import { fmtDate, isoDay, pct } from "@/lib/format";
 import { useTableSort, type SortColumn } from "@/lib/tableSort";
 
 const byName = (a: DecklistListItem, b: DecklistListItem) =>
@@ -19,6 +19,14 @@ const COLUMNS: SortColumn<DecklistListItem>[] = [
     key: "colors",
     label: "Colors",
     compare: (a, b) => compareIdentity(a.decklist.color_identity, b.decklist.color_identity),
+  },
+  {
+    key: "played",
+    label: "Date",
+    // Not a number, but read newest-first like one, so the first click points down.
+    // ISO days sort correctly as plain strings, which is why they are compared as such.
+    descFirst: true,
+    compare: (a, b) => isoDay(a.decklist.played_at).localeCompare(isoDay(b.decklist.played_at)),
   },
   {
     key: "record",
@@ -50,7 +58,8 @@ export function DeckTable({
   decks: DecklistListItem[];
   showArchetype?: boolean;
 }) {
-  // No initial sort: the server returns newest-first, which is the default view.
+  // No initial sort: the server returns most-recently-played first, which is the
+  // default view — and matches what the Date column would give on one click.
   const { rows, sort, toggle } = useTableSort(decks, COLUMNS, { tiebreak: byName });
 
   return (
@@ -76,6 +85,7 @@ export function DeckTable({
             <td>
               <ColorPips bits={d.color_identity} splash={d.splash_colors} showCode />
             </td>
+            <td style={{ whiteSpace: "nowrap" }}>{fmtDate(d.played_at)}</td>
             <td className="num">{d.games_played > 0 ? `${d.wins}-${d.losses}` : "—"}</td>
             <td className="num">{pct(d.winrate)}</td>
           </tr>

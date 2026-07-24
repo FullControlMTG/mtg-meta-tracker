@@ -13,6 +13,7 @@ import {
   type InferResult,
 } from "@/lib/api";
 import { ARCHETYPES, STATUSES } from "@/lib/decklist";
+import { isoDay } from "@/lib/format";
 import { ColorPips } from "@/components/ColorPips";
 
 export default function EditDeckPage({ params }: { params: { id: string } }) {
@@ -26,6 +27,7 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
   const [name, setName] = useState("");
   const [archetype, setArchetype] = useState("");
   const [status, setStatus] = useState("active");
+  const [playedAt, setPlayedAt] = useState("");
   const [raw, setRaw] = useState("");
   const [cubeId, setCubeId] = useState("");
   // Owner. Admins may reassign a deck; everyone else sees no picker.
@@ -62,6 +64,7 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
         setName(d.name);
         setArchetype(d.archetype ?? "");
         setStatus(d.status);
+        setPlayedAt(isoDay(d.played_at));
         setRaw(d.decklist_raw);
         setCubeId(d.cube_id);
         setUserId(d.user_id);
@@ -98,6 +101,7 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
         name,
         archetype,
         status,
+        played_at: playedAt,
         decklist_raw: raw,
       };
       // Only admins may reassign; sending our own id back would be a no-op anyway.
@@ -214,6 +218,15 @@ export default function EditDeckPage({ params }: { params: { id: string } }) {
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
+
+        <label htmlFor="played">Date played</label>
+        <input
+          id="played"
+          type="date"
+          value={playedAt}
+          onChange={(e) => setPlayedAt(e.target.value)}
+          required
+        />
 
         <label htmlFor="list">Decklist</label>
         <textarea

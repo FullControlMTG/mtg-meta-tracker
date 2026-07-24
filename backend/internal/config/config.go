@@ -1,9 +1,15 @@
 package config
 
 import (
+	"log"
 	"os"
 	"strconv"
 	"time"
+
+	// The zoneinfo database, compiled into the binary. The backend runs in a
+	// scratch container with no /usr/share/zoneinfo, where LoadLocation would
+	// otherwise fail and silently drop the app back to UTC.
+	_ "time/tzdata"
 )
 
 type Config struct {
@@ -29,6 +35,11 @@ type Config struct {
 	RevalidateURL    string
 	RevalidateSecret string
 
+	// The playgroup's timezone — the one "today" means when a deck is dated. It is
+	// a local cube played in one place, so a single zone is the whole story; the
+	// server's own clock is not, since it runs in UTC.
+	Timezone *time.Location
+
 	// First-admin bootstrap: applied only when the users table is empty.
 	BootstrapAdminUsername string
 	BootstrapAdminEmail    string
@@ -50,6 +61,7 @@ func Load() Config {
 		SyncInterval:        time.Duration(envInt("SYNC_INTERVAL_MINUTES", 360)) * time.Minute,
 		RevalidateURL:       env("REVALIDATE_URL", ""),
 		RevalidateSecret:    env("REVALIDATE_SECRET", ""),
+		Timezone:            location(env("APP_TIMEZONE", "America/Los_Angeles")),
 
 		BootstrapAdminUsername: env("BOOTSTRAP_ADMIN_USERNAME", ""),
 		BootstrapAdminEmail:    env("BOOTSTRAP_ADMIN_EMAIL", ""),
@@ -62,6 +74,17 @@ func env(k, def string) string {
 		return v
 	}
 	return def
+}
+
+// location resolves an IANA zone name, falling back to UTC. A typo would otherwise
+// date every deck in UTC without a word about it, so it is loud.
+func location(name string) *time.Location {
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		log.Printf("config: unknown APP_TIMEZONE %q (%v); dating decks in UTC", name, err)
+		return time.UTC
+	}
+	return loc
 }
 
 func envInt(k string, def int) int {

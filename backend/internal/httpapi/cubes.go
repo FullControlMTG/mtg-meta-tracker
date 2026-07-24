@@ -14,9 +14,13 @@ import (
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/store"
 )
 
+// card_count is copies, not rows: a cube running 150 Ornithopters is a 150-card cube.
+// unique_count is the printings behind them, which for a singleton cube is the same
+// number and for a themed one is the more interesting of the two.
 func (s *Server) cubeView(r *http.Request, c *domain.Cube) map[string]any {
-	count, _ := s.store.CountActiveCubeCards(r.Context(), c.ID)
-	return map[string]any{"cube": c, "card_count": count}
+	unique, _ := s.store.CountActiveCubeCards(r.Context(), c.ID)
+	copies, _ := s.store.CountActiveCubeCopies(r.Context(), c.ID)
+	return map[string]any{"cube": c, "card_count": copies, "unique_count": unique}
 }
 
 func (s *Server) enqueueCubeSync(r *http.Request, id uuid.UUID) {

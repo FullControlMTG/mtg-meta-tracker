@@ -85,7 +85,10 @@ export interface Cube {
 }
 export interface CubeView {
   cube: Cube;
+  // Copies in the pool, and the distinct printings behind them. Equal for a
+  // singleton cube; a themed cube can run many copies of one card.
   card_count: number;
+  unique_count: number;
 }
 // Live progress of the admin "Sync Scryfall images" action (mirrors the Go
 // store.CubeSyncProgress row). "none" is returned for a never-synced cube.
@@ -111,6 +114,9 @@ export interface CubeCard {
   type_line?: string;
   color_identity: number;
   group_colors: number;
+  // Copies in the pool. Usually 1 — a cube is normally singleton — but a themed
+  // cube can run 150 of something, and CardFan badges anything above 1.
+  quantity: number;
   image_normal?: string;
   image_art_crop?: string;
   // The exact printing — addresses the card on Scryfall.
@@ -133,11 +139,14 @@ export interface Decklist {
   decklist_raw: string;
   card_count: number;
   status: string;
+  // The day the deck was played. Always set — it defaults to the upload date — and
+  // served as an RFC3339 timestamp whose time is a meaningless midnight UTC, so read
+  // the calendar day off the string (see lib/format.ts) rather than through Date.
+  played_at: string;
   games_played: number;
   wins: number;
   losses: number;
   event_name?: string;
-  played_at?: string;
   record_updated_at?: string;
   winrate?: number;
   created_at: string;
@@ -159,6 +168,13 @@ export interface DecklistCard {
   // The exact printing — addresses the card on Scryfall.
   set_code?: string;
   collector_number?: string;
+}
+// The server's own calendar day, in the playgroup's timezone. A date picker opens on
+// it so the form and the backend's default agree — the browser's today is its own
+// timezone's, which is a different day for anyone travelling.
+export interface Today {
+  date: string;
+  timezone: string;
 }
 export interface PublicUser {
   id: string;
@@ -214,6 +230,23 @@ export interface ColorStat {
   losses: number;
   winrate: number | null;
 }
+// One color's standing on one day of the color trend.
+export interface ColorTrendColor {
+  color: number; // a single WUBRG bit
+  deck_count: number;
+  // 0..1 of that day's color pie — normalized across the five colors, not against
+  // total_decks, since a two-color deck plays two of them. Null on a day whose decks
+  // are all colorless, where there is no pie to take a slice of.
+  share: number | null;
+}
+// One day of the color trend, with every color present in WUBRG order — including the
+// ones at zero, so the bands of a stacked area have a point at every x.
+export interface ColorTrendPoint {
+  as_of: string; // "2026-07-24" — a calendar day, never a timestamp
+  total_decks: number;
+  colors: ColorTrendColor[];
+}
+
 export interface CardStat {
   card_id: string;
   name: string;

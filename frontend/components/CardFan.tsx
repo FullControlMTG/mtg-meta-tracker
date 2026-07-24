@@ -11,7 +11,8 @@ const PEEK_RATIO = 0.19; // fraction of a stacked card's height left visible (ti
 
 // Minimal shape shared by DecklistCard and CubeCard. is_resolved is optional —
 // cube cards are always resolved, so treat a missing flag as resolved. quantity is
-// optional too — a cube pool is singleton, so only decks ever badge a card.
+// optional because a caller may not track copies at all; where it is tracked, on a
+// deck's list and on a cube's pool alike, anything above 1 gets a ×N badge.
 export type FanCard = {
   card_id?: string;
   card_name: string;

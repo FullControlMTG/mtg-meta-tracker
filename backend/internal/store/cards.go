@@ -125,6 +125,8 @@ type CubeCardView struct {
 	CMC           *float64  `json:"cmc,omitempty"`
 	TypeLine      *string   `json:"type_line,omitempty"`
 	ColorIdentity int       `json:"color_identity"`
+	// Copies in the pool. 1 for a singleton cube, which is most of them.
+	Quantity int `json:"quantity"`
 	// The section the card displays under; see domain.GroupColors.
 	GroupColors  int     `json:"group_colors"`
 	ImageNormal  *string `json:"image_normal,omitempty"`
@@ -142,7 +144,7 @@ func (s *Store) ListCubeCards(ctx context.Context, cubeID uuid.UUID) ([]CubeCard
 	rows, err := s.pool.Query(ctx, `
 		SELECT c.scryfall_id, c.name, c.slug, c.mana_cost, c.cmc, c.type_line,
 			c.color_identity, c.image_normal, c.image_art_crop,
-			c.set_code, c.collector_number,`+groupColorCols+`
+			c.set_code, c.collector_number, cc.quantity,`+groupColorCols+`
 		FROM cards c
 		JOIN cube_cards cc ON cc.card_id = c.scryfall_id
 		WHERE cc.cube_id = $1 AND cc.is_active
@@ -157,7 +159,7 @@ func (s *Store) ListCubeCards(ctx context.Context, cubeID uuid.UUID) ([]CubeCard
 		var g groupColorInputs
 		if err := rows.Scan(&v.ScryfallID, &v.Name, &v.Slug, &v.ManaCost, &v.CMC, &v.TypeLine,
 			&v.ColorIdentity, &v.ImageNormal, &v.ImageArtCrop,
-			&v.SetCode, &v.CollectorNumber,
+			&v.SetCode, &v.CollectorNumber, &v.Quantity,
 			&g.colors, &g.oracleText, &g.produced); err != nil {
 			return nil, err
 		}
@@ -299,19 +301,25 @@ func (s *Store) ListDecksWithCard(ctx context.Context, cubeID, cardID uuid.UUID)
 	return out, rows.Err()
 }
 
+// PoolCard is one printing in a cube's pool and how many copies of it the list runs.
+type PoolCard struct {
+	CardID   uuid.UUID
+	Quantity int
+}
+
 // Absent cards are soft-removed (not deleted) so old decklists still resolve.
 // Returns the number of active rows the cube actually holds once committed, so
 // the caller can check that against what it asked for rather than assuming.
-func (s *Store) SyncCubeCards(ctx context.Context, cubeID uuid.UUID, activeIDs []uuid.UUID) (int, error) {
+func (s *Store) SyncCubeCards(ctx context.Context, cubeID uuid.UUID, active []PoolCard) (int, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	idStrs := make([]string, len(activeIDs))
-	for i, id := range activeIDs {
-		idStrs[i] = id.String()
+	idStrs := make([]string, len(active))
+	for i, c := range active {
+		idStrs[i] = c.CardID.String()
 	}
 
 	if _, err := tx.Exec(ctx, `
@@ -321,25 +329,29 @@ func (s *Store) SyncCubeCards(ctx context.Context, cubeID uuid.UUID, activeIDs [
 		return 0, err
 	}
 
-	for _, id := range activeIDs {
+	for _, c := range active {
+		qty := c.Quantity
+		if qty < 1 {
+			qty = 1
+		}
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO cube_cards (cube_id, card_id, is_active, added_at, removed_at)
-			VALUES ($1,$2,true, now(), NULL)
+			INSERT INTO cube_cards (cube_id, card_id, quantity, is_active, added_at, removed_at)
+			VALUES ($1,$2,$3,true, now(), NULL)
 			ON CONFLICT (cube_id, card_id)
-			DO UPDATE SET is_active=true, removed_at=NULL`,
-			cubeID, id); err != nil {
+			DO UPDATE SET quantity=EXCLUDED.quantity, is_active=true, removed_at=NULL`,
+			cubeID, c.CardID, qty); err != nil {
 			return 0, err
 		}
 	}
 
-	var active int
+	var rows int
 	if err := tx.QueryRow(ctx,
 		`SELECT count(*) FROM cube_cards WHERE cube_id=$1 AND is_active`, cubeID).
-		Scan(&active); err != nil {
+		Scan(&rows); err != nil {
 		return 0, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return 0, err
 	}
-	return active, nil
+	return rows, nil
 }

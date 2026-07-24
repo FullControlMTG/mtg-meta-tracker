@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -11,16 +10,16 @@ import (
 )
 
 const decklistCols = `id, cube_id, user_id, name, description, color_identity, splash_colors, archetype,
-	source_url, decklist_raw, card_count, status,
-	games_played, wins, losses, event_name, played_at, record_updated_at,
+	source_url, decklist_raw, card_count, status, played_at,
+	games_played, wins, losses, event_name, record_updated_at,
 	winrate, created_at, updated_at`
 
 func scanDecklist(row pgx.Row) (*domain.Decklist, error) {
 	var d domain.Decklist
 	err := row.Scan(&d.ID, &d.CubeID, &d.UserID, &d.Name, &d.Description, &d.ColorIdentity,
 		&d.SplashColors, &d.Archetype, &d.SourceURL, &d.DecklistRaw, &d.CardCount, &d.Status,
-		&d.GamesPlayed, &d.Wins, &d.Losses, &d.EventName,
-		&d.PlayedAt, &d.RecordUpdatedAt, &d.Winrate, &d.CreatedAt, &d.UpdatedAt)
+		&d.PlayedAt, &d.GamesPlayed, &d.Wins, &d.Losses, &d.EventName,
+		&d.RecordUpdatedAt, &d.Winrate, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		return nil, normErr(err)
 	}
@@ -60,14 +59,16 @@ func (s *Store) CreateDecklist(ctx context.Context, d *domain.Decklist, cards []
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// played_at is NOT NULL DEFAULT CURRENT_DATE, but the caller always supplies it —
+	// the server's today is not the uploader's today once they are timezones apart.
 	err = tx.QueryRow(ctx, `
 		INSERT INTO decklists (cube_id, user_id, name, description, color_identity, splash_colors,
-			archetype, source_url, decklist_raw, card_count, status)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-		RETURNING id, winrate, created_at, updated_at`,
+			archetype, source_url, decklist_raw, card_count, status, played_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		RETURNING id, played_at, winrate, created_at, updated_at`,
 		d.CubeID, d.UserID, d.Name, d.Description, d.ColorIdentity, d.SplashColors, d.Archetype,
-		d.SourceURL, d.DecklistRaw, d.CardCount, d.Status,
-	).Scan(&d.ID, &d.Winrate, &d.CreatedAt, &d.UpdatedAt)
+		d.SourceURL, d.DecklistRaw, d.CardCount, d.Status, d.PlayedAt,
+	).Scan(&d.ID, &d.PlayedAt, &d.Winrate, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		return err
 	}
@@ -96,8 +97,11 @@ func (s *Store) GetDecklist(ctx context.Context, id uuid.UUID) (*domain.Decklist
 }
 
 func (s *Store) ListDecklists(ctx context.Context, f DecklistFilter) ([]domain.Decklist, error) {
+	// Most recently played first. played_at is the deck's own date and the column the
+	// tables show, so ordering by it keeps the unsorted view and the Date column
+	// telling the same story; created_at breaks ties within a day.
 	q := `SELECT ` + decklistCols + ` FROM decklists WHERE ($1::uuid IS NULL OR cube_id=$1)
-		AND ($2::uuid IS NULL OR user_id=$2) ORDER BY created_at DESC`
+		AND ($2::uuid IS NULL OR user_id=$2) ORDER BY played_at DESC, created_at DESC`
 	rows, err := s.pool.Query(ctx, q, f.CubeID, f.UserID)
 	if err != nil {
 		return nil, err
@@ -196,10 +200,11 @@ func (s *Store) UpdateDecklist(ctx context.Context, d *domain.Decklist, cards []
 
 	ct, err := tx.Exec(ctx, `
 		UPDATE decklists SET user_id=$2, name=$3, description=$4, color_identity=$5, splash_colors=$6,
-			archetype=$7, source_url=$8, decklist_raw=$9, card_count=$10, status=$11, updated_at=now()
+			archetype=$7, source_url=$8, decklist_raw=$9, card_count=$10, status=$11, played_at=$12,
+			updated_at=now()
 		WHERE id=$1`,
 		d.ID, d.UserID, d.Name, d.Description, d.ColorIdentity, d.SplashColors, d.Archetype,
-		d.SourceURL, d.DecklistRaw, d.CardCount, d.Status)
+		d.SourceURL, d.DecklistRaw, d.CardCount, d.Status, d.PlayedAt)
 	if err != nil {
 		return err
 	}
@@ -270,21 +275,22 @@ func (s *Store) RecomputeDeckColors(ctx context.Context, cubeID uuid.UUID) (int,
 	return changed, nil
 }
 
-// DecklistRecord is the win/loss record patch payload.
+// DecklistRecord is the win/loss record patch payload. The date the deck was played
+// is deliberately not in here: it belongs to the deck (see domain.Decklist.PlayedAt)
+// and is written by UpdateDecklist, so saving a record leaves it alone.
 type DecklistRecord struct {
 	GamesPlayed int
 	Wins        int
 	Losses      int
 	EventName   *string
-	PlayedAt    *time.Time
 }
 
 func (s *Store) UpdateDecklistRecord(ctx context.Context, id uuid.UUID, rec DecklistRecord) error {
 	ct, err := s.pool.Exec(ctx, `
 		UPDATE decklists SET games_played=$2, wins=$3, losses=$4,
-			event_name=$5, played_at=$6, record_updated_at=now(), updated_at=now()
+			event_name=$5, record_updated_at=now(), updated_at=now()
 		WHERE id=$1`,
-		id, rec.GamesPlayed, rec.Wins, rec.Losses, rec.EventName, rec.PlayedAt)
+		id, rec.GamesPlayed, rec.Wins, rec.Losses, rec.EventName)
 	if err != nil {
 		return err
 	}

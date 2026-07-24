@@ -31,7 +31,10 @@ export default async function CubeDetailPage({ params }: { params: { id: string 
         </p>
         <h1 style={{ marginBottom: "0.25rem" }}>{cube.name}</h1>
         <p className="muted">
-          {view.card_count} cards · synced {fmtDate(cube.last_synced_at)}
+          {view.card_count} cards
+          {/* Only worth saying when they differ — on a singleton cube it is noise. */}
+          {view.unique_count !== view.card_count && <> ({view.unique_count} unique)</>} · synced{" "}
+          {fmtDate(cube.last_synced_at)}
           {cube.moxfield_public_id && (
             <>
               {" · "}
@@ -50,7 +53,8 @@ export default async function CubeDetailPage({ params }: { params: { id: string 
         </p>
       ) : (
         <div style={{ maxWidth: 1040, margin: "1.5rem auto 0" }}>
-          <CardBrowser sections={groups} placeholder="Search the cube…" />
+          {/* countQuantity so the section counts are copies, matching the header. */}
+          <CardBrowser sections={groups} countQuantity placeholder="Search the cube…" />
         </div>
       )}
     </main>

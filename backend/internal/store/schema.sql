@@ -99,6 +99,9 @@ CREATE INDEX IF NOT EXISTS idx_cards_color_ident ON cards(color_identity);
 CREATE TABLE IF NOT EXISTS cube_cards (
     cube_id    uuid NOT NULL REFERENCES cubes(id) ON DELETE CASCADE,
     card_id    uuid NOT NULL REFERENCES cards(scryfall_id) ON DELETE CASCADE,
+    -- Copies in the pool. Singleton cubes run 1s; a themed cube may run 150
+    -- Ornithopters, and the pool page badges anything above 1.
+    quantity   int NOT NULL DEFAULT 1,
     is_active  boolean NOT NULL DEFAULT true,
     added_at   timestamptz NOT NULL DEFAULT now(),
     removed_at timestamptz,
@@ -123,12 +126,13 @@ CREATE TABLE IF NOT EXISTS decklists (
     card_count        int  NOT NULL DEFAULT 0,
     status            text NOT NULL DEFAULT 'active'
                         CHECK (status IN ('draft','active','archived')),
+    -- the date the deck was played; owner-editable, today unless they say otherwise
+    played_at         date NOT NULL DEFAULT CURRENT_DATE,
     -- record (nullable / added after the fact)
     games_played      int NOT NULL DEFAULT 0,
     wins              int NOT NULL DEFAULT 0,
     losses            int NOT NULL DEFAULT 0,
     event_name        text,
-    played_at         date,
     record_updated_at timestamptz,
     winrate           numeric GENERATED ALWAYS AS
         (CASE WHEN games_played > 0 THEN wins::numeric / games_played END) STORED,
@@ -154,7 +158,7 @@ CREATE TABLE IF NOT EXISTS decklist_cards (
 CREATE INDEX IF NOT EXISTS idx_decklist_cards_card ON decklist_cards(card_id);
 
 -- ---------------------------------------------------------------------------
--- Analytics snapshots (see docs/DESIGN.md §4)
+-- Analytics snapshots (see .claude/DESIGN.md)
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS analytics_runs (
     id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -181,6 +185,25 @@ CREATE TABLE IF NOT EXISTS color_stats (
     losses        int NOT NULL DEFAULT 0,
     winrate       numeric,
     PRIMARY KEY (run_id, facet, facet_key)
+);
+
+-- The color pie over time: one row per (day a deck was played, color), holding the
+-- decks playing that color *as of* that day. Cumulative, so a row's counts include
+-- every deck dated on or before as_of — which is what makes the series a meta trend
+-- rather than a per-day sample of whoever happened to build that night.
+--
+-- share is normalized across the five colors on that day, not against total_decks:
+-- a two-color deck plays two colors, so deck_counts sum past the deck total and would
+-- never stack to 100%. total_decks rides along so a reader can still be told "6 of 11
+-- decks" rather than only a percentage.
+CREATE TABLE IF NOT EXISTS color_trend_stats (
+    run_id      uuid NOT NULL REFERENCES analytics_runs(id) ON DELETE CASCADE,
+    as_of       date NOT NULL,
+    color       smallint NOT NULL,     -- a single WUBRG bit: 1|2|4|8|16
+    deck_count  int NOT NULL DEFAULT 0,
+    total_decks int NOT NULL DEFAULT 0,
+    share       numeric,               -- 0..1 of that day's color pie; null when no colored decks
+    PRIMARY KEY (run_id, as_of, color)
 );
 
 CREATE TABLE IF NOT EXISTS card_stats (
@@ -340,3 +363,20 @@ ALTER TABLE decklists ADD COLUMN IF NOT EXISTS splash_colors smallint NOT NULL D
 ALTER TABLE color_stats DROP CONSTRAINT IF EXISTS color_stats_facet_check;
 ALTER TABLE color_stats ADD CONSTRAINT color_stats_facet_check
     CHECK (facet IN ('exact_identity','single_color','color_count','splash_color'));
+
+-- A cube pool is not always singleton: "150 Ornithopter" in a pasted list is one pool
+-- entry with 150 copies, and collapsing it to a single row lost that. Existing rows
+-- default to 1 and the next sync writes the real counts (the resolver version bump
+-- invalidates every content hash, so that sync is the next one to run).
+ALTER TABLE cube_cards ADD COLUMN IF NOT EXISTS quantity int NOT NULL DEFAULT 1;
+
+-- played_at is the date the deck was played, and it belongs to the deck rather than to
+-- its win/loss record: it is set (defaulting to today) whenever a deck is created and
+-- stays editable by its owner, whether or not a record was ever entered. Every deck has
+-- one, so it is NOT NULL — nothing downstream has to render a missing date. Decks that
+-- predate the column take their upload date, which is exactly what the new default
+-- would have given them.
+UPDATE decklists SET played_at = created_at::date WHERE played_at IS NULL;
+ALTER TABLE decklists ALTER COLUMN played_at SET DEFAULT CURRENT_DATE;
+ALTER TABLE decklists ALTER COLUMN played_at SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_decklists_played_at ON decklists(played_at DESC);

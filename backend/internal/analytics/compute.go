@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -56,6 +57,66 @@ type deckCards struct {
 
 var singleColorBits = []int{
 	int(domain.White), int(domain.Blue), int(domain.Black), int(domain.Red), int(domain.Green),
+}
+
+// colorTrend builds the color pie as it stood on each day a deck was played: for every
+// distinct played_at, the decks dated on or before it that play each color, and that
+// color's slice of the pie.
+//
+// Cumulative, and every color is emitted on every day — including the ones sitting at
+// zero. An area chart reads its bands off matching x-positions, and a color that
+// appears only on the days it was played would leave holes for the others to slide
+// into. Days on which nothing was played are absent: nothing changed, and a straight
+// line between two points says that better than a row per empty day would.
+//
+// Splashes are excluded, like everywhere else — a deck's colors are the ones it is
+// built on (see domain.InferDeckColors).
+func colorTrend(decks []model.DeckRow) []model.ColorTrendRow {
+	if len(decks) == 0 {
+		return nil
+	}
+	byDay := map[string][]model.DeckRow{}
+	var days []time.Time
+	for _, d := range decks {
+		day := d.PlayedAt.UTC().Truncate(24 * time.Hour)
+		key := day.Format("2006-01-02")
+		if _, seen := byDay[key]; !seen {
+			days = append(days, day)
+		}
+		byDay[key] = append(byDay[key], d)
+	}
+	sort.Slice(days, func(i, j int) bool { return days[i].Before(days[j]) })
+
+	var out []model.ColorTrendRow
+	counts := map[int]int{}
+	total := 0
+	for _, day := range days {
+		for _, d := range byDay[day.Format("2006-01-02")] {
+			total++
+			for _, bit := range singleColorBits {
+				if d.ColorIdent&bit != 0 {
+					counts[bit]++
+				}
+			}
+		}
+		// The denominator is the sum over colors, not the deck total: a two-color deck
+		// is two of these, so dividing by decks would leave the day short of 100%.
+		pie := 0
+		for _, bit := range singleColorBits {
+			pie += counts[bit]
+		}
+		for _, bit := range singleColorBits {
+			row := model.ColorTrendRow{
+				AsOf: day, Color: bit, DeckCount: counts[bit], TotalDecks: total,
+			}
+			if pie > 0 {
+				share := float64(counts[bit]) / float64(pie)
+				row.Share = &share
+			}
+			out = append(out, row)
+		}
+	}
+	return out
 }
 
 // aggregate computes every analytics snapshot in a single pass. Pure function.
@@ -185,6 +246,8 @@ func aggregate(decks []model.DeckRow, cards []model.DeckCardRow) *model.Results 
 			})
 		}
 	}
+
+	res.ColorTrend = colorTrend(decks)
 
 	// card_stats
 	for id, a := range cardAgg {

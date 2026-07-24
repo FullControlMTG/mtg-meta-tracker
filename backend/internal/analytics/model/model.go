@@ -3,15 +3,21 @@
 // kept in a leaf package to avoid a store<->analytics import cycle.
 package model
 
-import "github.com/google/uuid"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // DeckRow is a decklist loaded for analytics (record fields + colors). ColorIdent
 // is the deck's real colors and SplashIdent the ones it only splashes; they are
-// disjoint, and only the former feeds the color facets.
+// disjoint, and only the former feeds the color facets. PlayedAt is the day the
+// deck was played, and the only time axis the analytics have.
 type DeckRow struct {
 	ID          uuid.UUID
 	ColorIdent  int
 	SplashIdent int
+	PlayedAt    time.Time
 	Games       int
 	Wins        int
 	Losses      int
@@ -36,6 +42,16 @@ type ColorStatRow struct {
 	Wins      int
 	Losses    int
 	Winrate   *float64
+}
+
+// ColorTrendRow is one color's standing on one day: how many decks played it as of
+// then, out of how many decks existed, and its slice of that day's color pie.
+type ColorTrendRow struct {
+	AsOf       time.Time
+	Color      int
+	DeckCount  int
+	TotalDecks int
+	Share      *float64
 }
 
 type CardStatRow struct {
@@ -75,6 +91,7 @@ type DeckMetricRow struct {
 // Results is the full output of one recompute, ready to persist.
 type Results struct {
 	ColorStats    []ColorStatRow
+	ColorTrend    []ColorTrendRow
 	CardStats     []CardStatRow
 	PairStats     []PairStatRow
 	Meta          MetaSnapshotRow

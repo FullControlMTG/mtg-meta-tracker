@@ -4,12 +4,14 @@ import {
   apiGetOptional,
   type CardStat,
   type ColorStat,
+  type ColorTrendPoint,
   type CubeView,
   type Overview,
 } from "@/lib/api";
 import { getCubes } from "@/lib/cube";
 import { COLORS } from "@/lib/colors";
 import { CardStatsTable } from "@/components/CardStatsTable";
+import { ColorTrendChart } from "@/components/ColorTrendChart";
 import { CubeSwitcher } from "@/components/CubeSwitcher";
 import { RadarChart, type RadarAxis } from "@/components/RadarChart";
 import { StatTile } from "@/components/StatTile";
@@ -85,13 +87,15 @@ export default async function CubeStatsPage({ params }: { params: { cube: string
   ]);
   if (!view) notFound();
 
-  const [overview, colors, cards] = await Promise.all([
+  const [overview, colors, trend, cards] = await Promise.all([
     apiGetOptional<Overview>(`/analytics/overview?cube=${cubeId}`, 3600),
     apiGetOptional<ColorStat[]>(`/analytics/colors?cube=${cubeId}`, 3600),
+    apiGetOptional<ColorTrendPoint[]>(`/analytics/color-trend?cube=${cubeId}`, 3600),
     apiGetOptional<CardStat[]>(`/analytics/cards?cube=${cubeId}&limit=100`, 3600),
   ]);
 
   const colorStats = colors ?? [];
+  const trendPoints = trend ?? [];
   const cardStats = cards ?? [];
   const meta = overview?.meta;
   const hasDecks = (meta?.total_decks ?? 0) > 0;
@@ -180,6 +184,17 @@ export default async function CubeStatsPage({ params }: { params: { cube: string
               />
             </section>
           </div>
+
+          <section className="card" style={{ marginTop: "1.5rem" }}>
+            <h2>Color Share Over Time</h2>
+            <p className="muted" style={{ marginTop: "-0.25rem" }}>
+              Each color&apos;s slice of the pie as the meta filled in, by the date decks
+              were played. Cumulative: every point counts the decks played up to that day,
+              and a multicolored deck counts for each of its colors — so the five shares
+              are of the colors played, not of the decks. Splashes are excluded.
+            </p>
+            <ColorTrendChart points={trendPoints} />
+          </section>
 
           <section className="card" style={{ marginTop: "1.5rem" }}>
             <div style={{ marginBottom: "0.5rem" }}>

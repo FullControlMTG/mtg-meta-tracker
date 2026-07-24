@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -91,9 +92,9 @@ func (s *Syncer) SyncCube(ctx context.Context, cubeID uuid.UUID) error {
 	// position — never by matching Scryfall's canonical name against the pasted one.
 	var (
 		cards      []domain.Card
-		activeIDs  []uuid.UUID
+		pool       []store.PoolCard
 		unresolved []string
-		seen       = map[uuid.UUID]int{} // scryfall id -> entry index that claimed it
+		seen       = map[uuid.UUID]int{} // scryfall id -> pool index that claimed it
 		dupes      int
 	)
 	for i, r := range results {
@@ -105,17 +106,23 @@ func (s *Syncer) SyncCube(ctx context.Context, cubeID uuid.UUID) error {
 			_ = s.store.FinishCubeSyncProgress(ctx, cubeID, "failed", err.Error())
 			return fmt.Errorf("upsert card %s: %w", r.Card.Name, err)
 		}
-		// Two entries resolving to one printing collapse into a single cube_cards row.
-		// That is a silent shrink, so say which entries collided.
+		qty := entries[i].Quantity
+		if qty < 1 {
+			qty = 1
+		}
+		// Two entries resolving to one printing share a cube_cards row — the table is
+		// keyed on (cube_id, card_id). Their copies add rather than one entry winning
+		// and the other vanishing, which is what "2 Forest" + "3 Forest (LEA)" means.
 		if prev, dup := seen[r.Card.ScryfallID]; dup {
 			dupes++
-			log.Printf("sync cube %s: duplicate printing: %q and %q both resolved to %s",
-				cubeID, describeEntry(entries[prev]), describeEntry(entries[i]), r.Card.ScryfallID)
+			pool[prev].Quantity += qty
+			log.Printf("sync cube %s: duplicate printing: %q and %q both resolved to %s; %d copies total",
+				cubeID, describeEntry(entries[i]), r.Card.Name, r.Card.ScryfallID, pool[prev].Quantity)
 			continue
 		}
-		seen[r.Card.ScryfallID] = i
+		seen[r.Card.ScryfallID] = len(pool)
 		cards = append(cards, *r.Card)
-		activeIDs = append(activeIDs, r.Card.ScryfallID)
+		pool = append(pool, store.PoolCard{CardID: r.Card.ScryfallID, Quantity: qty})
 	}
 
 	// Unresolved names are dropped from the pool, so record them on the progress
@@ -125,19 +132,19 @@ func (s *Syncer) SyncCube(ctx context.Context, cubeID uuid.UUID) error {
 	if len(unresolved) > 0 {
 		log.Printf("sync cube %s: %d entries unresolved: %v", cubeID, len(unresolved), unresolved)
 	}
-	log.Printf("sync cube %s: upsert: %d resolved, %d distinct printings, %d duplicates dropped",
-		cubeID, len(results)-len(unresolved), len(activeIDs), dupes)
+	log.Printf("sync cube %s: upsert: %d resolved, %d distinct printings, %d duplicates merged",
+		cubeID, len(results)-len(unresolved), len(pool), dupes)
 
-	active, err := s.store.SyncCubeCards(ctx, cubeID, activeIDs)
+	active, err := s.store.SyncCubeCards(ctx, cubeID, pool)
 	if err != nil {
 		_ = s.store.FinishCubeSyncProgress(ctx, cubeID, "failed", err.Error())
 		return fmt.Errorf("sync cube_cards: %w", err)
 	}
-	if active != len(activeIDs) {
+	if active != len(pool) {
 		log.Printf("sync cube %s: WARNING cube_cards holds %d active rows, expected %d",
-			cubeID, active, len(activeIDs))
+			cubeID, active, len(pool))
 	}
-	log.Printf("sync cube %s: cube_cards: %d active rows (expected %d)", cubeID, active, len(activeIDs))
+	log.Printf("sync cube %s: cube_cards: %d active rows (expected %d)", cubeID, active, len(pool))
 	if err := s.store.SetCubeSyncState(ctx, cubeID, hash, time.Now()); err != nil {
 		_ = s.store.FinishCubeSyncProgress(ctx, cubeID, "failed", err.Error())
 		return err
@@ -146,7 +153,7 @@ func (s *Syncer) SyncCube(ctx context.Context, cubeID uuid.UUID) error {
 	_ = s.store.EnqueueJob(ctx, "recompute_analytics",
 		map[string]string{"cube_id": cubeID.String(), "trigger": "cube_synced"},
 		"recompute:"+cubeID.String())
-	log.Printf("sync cube %s: %d active cards", cubeID, len(activeIDs))
+	log.Printf("sync cube %s: %d active cards", cubeID, len(pool))
 
 	// Best-effort: warm the on-disk image cache for this pool so the cube page
 	// serves self-hosted images immediately instead of downloading on first view.
@@ -246,17 +253,22 @@ func describeEntry(e decklist.ParsedCard) string {
 // into the content hash so every stored fingerprint is invalidated on deploy —
 // otherwise the unchanged-list short-circuit would skip the resolve and keep
 // serving the pool the old resolver built.
-const resolverVersion = 2
+//
+// 3: the pool carries per-card quantities.
+const resolverVersion = 3
 
 // hashEntries produces an order-independent, case-insensitive fingerprint of the
 // pool entries, used to detect whether the cube list has changed. The printing
 // is part of the fingerprint: re-pointing a card at a different set or collector
-// number has to trigger a re-resolve even though the name is the same.
+// number has to trigger a re-resolve even though the name is the same. So is the
+// quantity — "1 Ornithopter" becoming "150 Ornithopter" changes the pool without
+// changing which cards are in it, and would otherwise hash the same and be skipped.
 func hashEntries(entries []decklist.ParsedCard) string {
 	norm := make([]string, len(entries))
 	for i, e := range entries {
 		norm[i] = strings.ToLower(strings.TrimSpace(e.Name)) + "|" +
-			strings.ToLower(e.SetCode) + "|" + strings.ToLower(e.Collector)
+			strings.ToLower(e.SetCode) + "|" + strings.ToLower(e.Collector) + "|" +
+			strconv.Itoa(e.Quantity)
 	}
 	sort.Strings(norm)
 	joined := fmt.Sprintf("v%d\n%s", resolverVersion, strings.Join(norm, "\n"))

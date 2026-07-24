@@ -149,12 +149,13 @@ func (s *Server) handleCreateDecklist(w http.ResponseWriter, r *http.Request) {
 		SourceURL   string `json:"source_url"`
 		DecklistRaw string `json:"decklist_raw"`
 		Status      string `json:"status"`
+		// The day the deck was played, "2006-01-02". Omitted means today.
+		PlayedAt string `json:"played_at"`
 		// Optional record, if the deck was already played before listing.
-		GamesPlayed *int       `json:"games_played"`
-		Wins        int        `json:"wins"`
-		Losses      int        `json:"losses"`
-		EventName   *string    `json:"event_name"`
-		PlayedAt    *time.Time `json:"played_at"`
+		GamesPlayed *int    `json:"games_played"`
+		Wins        int     `json:"wins"`
+		Losses      int     `json:"losses"`
+		EventName   *string `json:"event_name"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid body")
@@ -182,6 +183,11 @@ func (s *Server) handleCreateDecklist(w http.ResponseWriter, r *http.Request) {
 		}
 		status = req.Status
 	}
+	playedAt, err := s.parsePlayedAt(req.PlayedAt)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	resolved, err := s.resolver.Resolve(r.Context(), cubeID, decklist.ParseList(req.DecklistRaw))
 	if err != nil {
@@ -204,6 +210,7 @@ func (s *Server) handleCreateDecklist(w http.ResponseWriter, r *http.Request) {
 		DecklistRaw:   req.DecklistRaw,
 		CardCount:     countMain(resolved.Cards),
 		Status:        status,
+		PlayedAt:      playedAt,
 	}
 	if req.Description != "" {
 		d.Description = &req.Description
@@ -219,11 +226,10 @@ func (s *Server) handleCreateDecklist(w http.ResponseWriter, r *http.Request) {
 		d.SourceURL = &req.SourceURL
 	}
 	// Optional record supplied at create time.
-	hasRecord := req.GamesPlayed != nil || req.Wins > 0 || req.Losses > 0 ||
-		req.EventName != nil || req.PlayedAt != nil
+	hasRecord := req.GamesPlayed != nil || req.Wins > 0 || req.Losses > 0 || req.EventName != nil
 	var rec store.DecklistRecord
 	if hasRecord {
-		rec, err = buildRecord(req.GamesPlayed, req.Wins, req.Losses, req.EventName, req.PlayedAt)
+		rec, err = buildRecord(req.GamesPlayed, req.Wins, req.Losses, req.EventName)
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
@@ -269,6 +275,8 @@ func (s *Server) handlePatchDecklist(w http.ResponseWriter, r *http.Request) {
 		SourceURL   *string `json:"source_url"`
 		DecklistRaw *string `json:"decklist_raw"`
 		Status      *string `json:"status"`
+		// "2006-01-02". Absent leaves the date alone; it can be changed, never cleared.
+		PlayedAt *string `json:"played_at"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid body")
@@ -309,6 +317,16 @@ func (s *Server) handlePatchDecklist(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		d.Status = *req.Status
+	}
+	if req.PlayedAt != nil {
+		// Unlike create, an empty string here is not "today" — it is a form sending a
+		// cleared date input, and the deck's date is not nullable. Reject it.
+		played, err := s.parsePlayedAt(*req.PlayedAt)
+		if err != nil || *req.PlayedAt == "" {
+			writeErr(w, http.StatusBadRequest, "played_at must be a date (YYYY-MM-DD)")
+			return
+		}
+		d.PlayedAt = played
 	}
 
 	var cards []domain.DecklistCard
@@ -355,18 +373,19 @@ func (s *Server) handlePatchDecklistRecord(w http.ResponseWriter, r *http.Reques
 		writeErr(w, http.StatusForbidden, "not allowed")
 		return
 	}
+	// The date the deck was played is not part of the record — it is a deck field,
+	// patched through PATCH /decklists/{id}. Sending it here does nothing.
 	var req struct {
-		GamesPlayed *int       `json:"games_played"`
-		Wins        int        `json:"wins"`
-		Losses      int        `json:"losses"`
-		EventName   *string    `json:"event_name"`
-		PlayedAt    *time.Time `json:"played_at"`
+		GamesPlayed *int    `json:"games_played"`
+		Wins        int     `json:"wins"`
+		Losses      int     `json:"losses"`
+		EventName   *string `json:"event_name"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	rec, err := buildRecord(req.GamesPlayed, req.Wins, req.Losses, req.EventName, req.PlayedAt)
+	rec, err := buildRecord(req.GamesPlayed, req.Wins, req.Losses, req.EventName)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -447,9 +466,50 @@ func (s *Server) handleInferColors(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// today is the current calendar day in the playgroup's timezone (config.Timezone,
+// America/Los_Angeles). The server itself runs in UTC, where the day turns over
+// mid-afternoon locally — a deck uploaded after 5pm would be dated tomorrow.
+func (s *Server) today() time.Time {
+	now := time.Now().In(s.cfg.Timezone)
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+// parsePlayedAt reads the date a deck was played. Empty means today, which the server
+// decides — a browser's idea of the day is its own timezone's, and the deck belongs to
+// a playgroup that sits in one.
+//
+// The wire format is a plain calendar day, "2006-01-02", which is what an <input
+// type="date"> submits and what a DATE column stores; RFC3339 is accepted too, since
+// that is how the field is *served* and a client may well hand back what it was given.
+// The result is midnight UTC, so the calendar day survives the round trip whatever
+// timezone anything downstream keeps.
+func (s *Server) parsePlayedAt(v string) (time.Time, error) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return s.today(), nil
+	}
+	if t, err := time.Parse("2006-01-02", v); err == nil {
+		return t, nil
+	}
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("played_at must be a date (YYYY-MM-DD)")
+	}
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC), nil
+}
+
+// handleToday serves the server's current date so a form's date picker can open on
+// the same day the server would have chosen. Public: it is a clock, not data.
+func (s *Server) handleToday(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{
+		"date":     s.today().Format("2006-01-02"),
+		"timezone": s.cfg.Timezone.String(),
+	})
+}
+
 // buildRecord validates the optional record fields and assembles a store record.
 // games_played defaults to wins+losses when the caller omits it.
-func buildRecord(gamesPlayed *int, wins, losses int, event *string, playedAt *time.Time) (store.DecklistRecord, error) {
+func buildRecord(gamesPlayed *int, wins, losses int, event *string) (store.DecklistRecord, error) {
 	gp := wins + losses
 	if gamesPlayed != nil {
 		gp = *gamesPlayed
@@ -465,7 +525,6 @@ func buildRecord(gamesPlayed *int, wins, losses int, event *string, playedAt *ti
 		Wins:        wins,
 		Losses:      losses,
 		EventName:   event,
-		PlayedAt:    playedAt,
 	}, nil
 }
 

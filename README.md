@@ -14,12 +14,19 @@ the best in your favorite format's metagame.
 
 ## Docs
 
-- [`docs/DESIGN.md`](docs/DESIGN.md) — architecture, data model, and the
-  analytics schema (color/card/pair stats), including which derived statistics
-  we deliberately do *not* compute, and why.
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — phased build plan.
-- [`CLAUDE.md`](CLAUDE.md) — the repo's non-obvious constraints (the idempotent
-  schema, the removed statistics, color inference), for humans and agents alike.
+All project documentation lives in [`.claude/`](.claude/CLAUDE.md) — written for
+AI coding agents, but the canonical reference for humans too:
+
+- [`.claude/CLAUDE.md`](.claude/CLAUDE.md) — entry point: stack, layout, commands,
+  conventions.
+- [`.claude/GOALS.md`](.claude/GOALS.md) — scope, current priorities, and what is
+  explicitly out of scope (including which derived statistics are deliberately
+  *not* computed, and why).
+- [`.claude/DESIGN.md`](.claude/DESIGN.md) — architecture, data model, the
+  analytics schema, the API surface, and the reasoning behind key decisions.
+- [`.claude/IMPLEMENTATION.md`](.claude/IMPLEMENTATION.md) — how the codebase
+  evolved; known limitations and tech debt.
+- [`.claude/GLOSSARY.md`](.claude/GLOSSARY.md) — MTG and project-specific terms.
 
 ## Quickstart (dev)
 
@@ -60,14 +67,43 @@ Username/password only, with **no public signup**: the first admin comes from th
 (`POST /api/admin/users`), handing over an initial password. Users change their own
 password under `/settings`; an admin can reset anyone's without knowing the old one.
 
+## Conventions
+
+House rules, so the codebase stays one thing rather than five:
+
+- **No ORM.** Hand-written SQL in `backend/internal/store/*.go`.
+- **No Tailwind, no CSS modules, no CSS-in-JS.** One global stylesheet,
+  `frontend/app/globals.css`, built on CSS custom properties (with a
+  `prefers-color-scheme: dark` block) plus semantic classes; everything else is
+  inline `style={{…}}`.
+- **No chart library.** Every chart — `ColorWinrateChart`, `RadarChart`,
+  `ColorTrendChart` — is hand-rolled SVG.
+- **Routes live in one place**: `backend/internal/httpapi/server.go` is the source
+  of truth for the API surface.
+- Frontend components are flat in `frontend/components/`, PascalCase, named
+  exports.
+
 ## Database
 
 The schema lives in
 [`backend/internal/store/schema.sql`](backend/internal/store/schema.sql). It is
 embedded in the Go binary and applied on **every** backend startup, so there is no
-migration step or tooling — but it means the file must stay idempotent: use
-`CREATE TABLE/INDEX IF NOT EXISTS`, and add columns to existing databases with an
-`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` in the migrations section at the bottom.
+migration step, no migration directory, and no version table — but it means the
+file must stay idempotent. A statement that fails against an already-populated
+database **stops the server from starting**, so:
+
+- New tables/indexes: `CREATE TABLE/INDEX IF NOT EXISTS`.
+- New columns: `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, in the
+  `Idempotent migrations for existing databases` section at the bottom of the file
+  — *not* in the `CREATE TABLE` block, which is a no-op once the table exists.
+- New CHECK constraints: normalize the existing rows first, then
+  `DROP CONSTRAINT IF EXISTS` before `ADD CONSTRAINT` (Postgres has no
+  `ADD CONSTRAINT IF NOT EXISTS`; the archetype enum at the bottom of the file is
+  the worked example).
+- Backfills run on every boot too. Prefer a rule that re-derives itself over a
+  one-shot `UPDATE` that a later edit could undo.
+
+`db/` is a scratch directory for gitignored dumps — the schema is *not* there.
 
 ```sh
 make db-dump                       # back up schema + data -> db/dump.sql (gitignored)

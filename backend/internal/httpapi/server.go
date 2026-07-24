@@ -58,6 +58,8 @@ func (s *Server) Router() http.Handler {
 		r.Get("/cards/{id}/image", s.handleCardImage)
 		r.Get("/cards/{slug}", s.handleGetCard)
 
+		r.Get("/today", s.handleToday)
+
 		r.Get("/decklists", s.handleListDecklists)
 		r.Get("/decklists/{id}", s.handleGetDecklist)
 		r.With(s.requireAuth).Post("/decklists", s.handleCreateDecklist)
@@ -68,6 +70,7 @@ func (s *Server) Router() http.Handler {
 
 		r.Get("/analytics/overview", s.handleAnalyticsOverview)
 		r.Get("/analytics/colors", s.handleAnalyticsColors)
+		r.Get("/analytics/color-trend", s.handleAnalyticsColorTrend)
 		r.Get("/analytics/cards", s.handleAnalyticsCards)
 		r.Get("/analytics/pairs", s.handleAnalyticsPairs)
 

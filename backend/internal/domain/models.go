@@ -115,12 +115,17 @@ type Decklist struct {
 	CardCount    int     `json:"card_count"`
 	Status       string  `json:"status"`
 
+	// The date the deck was played. A deck property, not part of its record — it is set
+	// when the deck is created (today, unless the uploader picks another day) and stays
+	// editable, whether or not a win/loss record was ever entered. A DATE column, so the
+	// time of day is always midnight UTC and only the calendar day is meaningful.
+	PlayedAt time.Time `json:"played_at"`
+
 	// Record (nullable / added after the fact).
 	GamesPlayed     int        `json:"games_played"`
 	Wins            int        `json:"wins"`
 	Losses          int        `json:"losses"`
 	EventName       *string    `json:"event_name,omitempty"`
-	PlayedAt        *time.Time `json:"played_at,omitempty"`
 	RecordUpdatedAt *time.Time `json:"record_updated_at,omitempty"`
 	Winrate         *float64   `json:"winrate,omitempty"` // generated column
 

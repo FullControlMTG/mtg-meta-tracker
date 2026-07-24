@@ -6,7 +6,7 @@ import { CardBrowser } from "@/components/CardBrowser";
 import { StatTile } from "@/components/StatTile";
 import { OwnerActions } from "@/components/OwnerActions";
 import { sortCards } from "@/lib/colors";
-import { pct } from "@/lib/format";
+import { fmtDate, pct } from "@/lib/format";
 
 export const revalidate = 3600;
 
@@ -50,7 +50,7 @@ export default async function DecklistDetailPage({ params }: { params: { id: str
             by <Link href={`/users/${user.username}`}>{user.display_name}</Link> ·{" "}
           </>
         )}
-        {d.card_count} cards
+        {fmtDate(d.played_at)} · {d.card_count} cards
         {d.archetype && <> · {d.archetype}</>}
       </p>
       {d.description && <p>{d.description}</p>}
@@ -74,12 +74,9 @@ export default async function DecklistDetailPage({ params }: { params: { id: str
         </p>
       ) : (
         <div style={{ marginTop: "1.5rem" }}>
-          <CardBrowser
-            sections={sections}
-            maxCols={DECK_MAX_COLS}
-            countQuantity
-            placeholder="Search this deck…"
-          />
+          {/* No search here: a deck is forty cards laid out on one screen, and the
+              header already counts them. The cube pool is the page that needs it. */}
+          <CardBrowser sections={sections} maxCols={DECK_MAX_COLS} countQuantity searchable={false} />
         </div>
       )}
 
