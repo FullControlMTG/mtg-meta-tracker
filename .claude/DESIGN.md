@@ -337,8 +337,8 @@ Decks live under `/decks`; the old `/decklists` paths permanently redirect.
   detail ISR 300)*
 - `/cards/[slug]` — printings, inclusion rate, most-played-with. *(ISR 300)*
 - `/users/[username]` — bio, that player's own stats (headline tiles, colors
-  played and splashed as radars, a color-pairing heatmap, their combinations
-  ranked), then a dense deck list. The stats are computed in the page from the
+  played and splashed as radars, all 31 color combinations as a wheel grid, their
+  combinations ranked), then a dense deck list. The stats are computed in the
   player's decklists, not from `meta_snapshot`: those are per-cube aggregates
   over everybody, and a player plays across cubes. *(ISR 3600)*
 - `/login`, `/settings` (change password), `/admin/cubes` (paste and sync a cube,
@@ -492,16 +492,32 @@ player pages link to the same decks they counted, best record first, from the sh
 
 ### No chart library
 
-Charts are hand-rolled SVG (`ColorWinrateChart`, `RadarChart`, `ColorTrendChart`)
-or CSS grid (`ColorPairHeatmap`). The MTG palette is semantic and cannot be
-re-picked for contrast — white is a near-white and black a near-black — so every
-fill carries a `--pip-ring` outline, and charts add a legend, direct labels, and a
-tooltip naming every series so identity never rests on hue alone.
+Charts are hand-rolled SVG (`ColorWinrateChart`, `RadarChart`, `ColorTrendChart`,
+`ColorWheelGrid`) or CSS grid. The MTG palette is semantic and cannot be re-picked
+for contrast — white is a near-white and black a near-black — so every fill carries
+a `--pip-ring` outline, and charts add a legend, direct labels, and a tooltip
+naming every series so identity never rests on hue alone.
 
-The one place the mana colors are *not* used is `ColorPairHeatmap`: its cells
-encode a count, so they take a single-hue `--accent` ramp and let the axes carry
-the colors being crossed. The ramp stops well short of solid so the number printed
-in each cell keeps its contrast on both surfaces.
+Where a mark encodes a *count* rather than an identity it takes a single-hue
+`--accent` ramp instead of the mana colors, stopping well short of solid so the
+number printed over it keeps its contrast on both surfaces. `ColorWheelGrid` runs
+both at once: the wheel glyph is identity (mana colors, or `--grid` for a
+combination never built), and the cell behind it is magnitude (the `--accent`
+ramp). The glyph carries its own `--surface` disc so it reads the same over any
+tint.
+
+### All 31 color combinations, not just the pairs
+
+`ColorWheelGrid` replaced a 5×5 pairing heatmap, which had the wrong shape: a pair
+is a Cartesian product, but a deck's colors are a *subset*, so every deck above two
+colors dissolved into unrelated pair cells. The grid comes back via the pentagon —
+rotating the color pie by a fifth maps each *kind* of combination onto itself, so
+mono, allied pair, enemy pair, shard, wedge and four-color are each an orbit of
+exactly five, plus WUBRG alone: 6 × 5 + 1 = 31, every combination once. Rows are
+the anchoring color, columns are the family, and since the families run 1, 2, 2, 3,
+3, 4 colors deep the column axis is also the color-count axis. A row is therefore
+not "every deck containing white" — that question belongs to the Colors Played
+radar. The component's header comment carries the full derivation.
 
 `ColorTrendChart` stacks its bands by where each color stands on the most recent
 point, largest on top, rather than in fixed WUBRG order — the last point is the

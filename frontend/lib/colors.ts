@@ -43,6 +43,34 @@ export function colorCount(bits: number): number {
   return COLORS.filter((c) => bits & c.bit).length;
 }
 
+// The ten guilds and the ten shards and wedges, by bitset. These are what a
+// playgroup says out loud — nobody calls a deck "UBG", they call it Sultai — so a
+// combination wears its name wherever there is room for one.
+//
+// Four- and five-color decks stop here on purpose. They have printed names too
+// (Yore-Tiller, Glint-Eye) and no one has ever used them; players say "WUBR", or
+// they say "four-color, no green". The letters are the honest label.
+// Kept five to a line, one line per family, because that grouping is the point:
+// each line is one turn of the color pie. See ColorWheelGrid, which lays them out.
+const COMBO_NAMES: Record<number, string> = {
+  // allied guilds
+  3: "Azorius", 6: "Dimir", 12: "Rakdos", 24: "Gruul", 17: "Selesnya",
+  // enemy guilds
+  5: "Orzhov", 10: "Izzet", 20: "Golgari", 9: "Boros", 18: "Simic",
+  // shards — a color and both its allies
+  19: "Bant", 7: "Esper", 14: "Grixis", 28: "Jund", 25: "Naya",
+  // wedges — a color and both its enemies
+  13: "Mardu", 26: "Temur", 21: "Abzan", 11: "Jeskai", 22: "Sultai",
+};
+
+export function comboName(bits: number): string {
+  if (bits === 0) return "Colorless";
+  const named = COMBO_NAMES[bits];
+  if (named) return named;
+  if (colorCount(bits) === 1) return `Mono-${colorByBit(bits).name.toLowerCase()}`;
+  return identityString(bits);
+}
+
 // --- cube card grouping ---
 
 export interface CardGroup<T> {

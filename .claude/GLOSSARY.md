@@ -10,6 +10,18 @@ the set of cards its decks may use.
 Black, Red, Green. The app's bitset, its display order, and its color-pie sorting
 all follow it.
 
+**Allied / enemy** — WUBRG is a cycle, and the two relationships between colors are
+positions on it: neighbours are allied (WU, UB, BR, RG, GW), colors two apart are
+enemies (WB, UR, BG, RW, GU). Five of each, ten two-color pairs in total.
+
+**Guild / shard / wedge** — the named color combinations. A *guild* is any two
+colors (Azorius, Rakdos); a *shard* is a color with both its allies (Esper, Jund);
+a *wedge* is a color with both its enemies (Abzan, Mardu). Five shards and five
+wedges make up the ten three-color combinations. `comboName` in `lib/colors.ts`
+maps a bitset to its name; four- and five-color decks fall back to their letters,
+because nobody says "Yore-Tiller". `ColorWheelGrid` is built on the fact that each
+of these families is exactly five combinations — one turn of the color pie apart.
+
 **Color identity** — Scryfall's field counting every colored mana symbol a card
 *produces or references*, including in rules text. **Not** what this app uses for
 deck colors: a Mox Sapphire has a blue color identity and would make a Selesnya

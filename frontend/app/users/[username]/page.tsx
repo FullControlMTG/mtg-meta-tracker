@@ -8,8 +8,8 @@ import {
 import { COLORS, colorCount, identityString } from "@/lib/colors";
 import { UNDEFEATED_TERMS, deckListHref, quoteTerm } from "@/lib/deckQuery";
 import { num, pct } from "@/lib/format";
-import { ColorPairHeatmap } from "@/components/ColorPairHeatmap";
 import { ColorPips } from "@/components/ColorPips";
+import { ColorWheelGrid } from "@/components/ColorWheelGrid";
 import { DeckTable } from "@/components/DeckTable";
 import { RadarChart, type RadarAxis } from "@/components/RadarChart";
 import { StatTile } from "@/components/StatTile";
@@ -178,11 +178,11 @@ export default async function UserPage({ params }: { params: { username: string 
             </section>
 
             <section className="card">
-              <h2>Color Pairings</h2>
+              <h2>Color Combinations</h2>
               <p className="muted" style={{ marginTop: "-0.25rem" }}>
-                Which colors they put together.
+                Every combination they could build.
               </p>
-              <ColorPairHeatmap bitsets={decks.map((d) => d.color_identity)} />
+              <ColorWheelGrid bitsets={decks.map((d) => d.color_identity)} />
             </section>
 
             <section className="card">
