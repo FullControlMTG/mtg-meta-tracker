@@ -44,31 +44,33 @@ async function serverFetchOpts(revalidate: number): Promise<RequestInit> {
 }
 
 // When the backend says the caller has no session on a server-rendered page,
-// the page cannot render. Redirect to /login rather than surface a 500 error
-// boundary. On the client we do nothing here — a background poll that suddenly
-// 401s should not yank the user out of what they were doing, and /auth/me
-// specifically expects a 401 to mean "logged out" rather than "please log in
-// right now". The client-side callers already handle null / throw themselves.
-async function redirectToLoginIfServer(): Promise<void> {
+// the page cannot render. Bounce to the landing rather than surface a 500
+// error boundary or drop the visitor straight into a login form — the
+// landing frames the app first and carries its own Sign in CTA. On the
+// client we do nothing here: a background poll that suddenly 401s should
+// not yank the user out of what they were doing, and /auth/me specifically
+// expects a 401 to mean "logged out" rather than "please log in right now."
+// The client-side callers already handle null / throw themselves.
+async function redirectToLandingIfServer(): Promise<void> {
   if (typeof window !== "undefined") return;
   const { redirect } = await import("next/navigation");
-  redirect("/login");
+  redirect("/");
 }
 
 export async function apiGet<T>(path: string, revalidate = 60): Promise<T> {
   const opts = await serverFetchOpts(revalidate);
   const res = await fetch(base() + "/api" + path, opts);
-  if (res.status === 401) await redirectToLoginIfServer();
+  if (res.status === 401) await redirectToLandingIfServer();
   if (!res.ok) throw new Error(`GET ${path}: ${res.status}`);
   return res.json() as Promise<T>;
 }
 
 // apiGetOptional returns null on any non-2xx (e.g. 404 when no analytics yet) or
 // when the backend is unreachable (e.g. during a build with no server running).
-// On the server a 401 is turned into a /login redirect first, so an SSR page
-// that requires auth never renders empty for an anonymous visitor; on the
-// client 401 stays null (SessionProvider polls /auth/me precisely to observe
-// that state).
+// On the server a 401 is turned into a landing-page redirect first, so an SSR
+// page that requires auth never renders empty for an anonymous visitor; on
+// the client 401 stays null (SessionProvider polls /auth/me precisely to
+// observe that state).
 export async function apiGetOptional<T>(path: string, revalidate = 60): Promise<T | null> {
   let res: Response;
   try {
@@ -80,7 +82,7 @@ export async function apiGetOptional<T>(path: string, revalidate = 60): Promise<
     console.warn(`GET ${path}: backend unreachable`, e);
     return null;
   }
-  if (res.status === 401) await redirectToLoginIfServer();
+  if (res.status === 401) await redirectToLandingIfServer();
   if (!res.ok) return null;
   return (await res.json()) as T;
 }

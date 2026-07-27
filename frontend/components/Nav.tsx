@@ -25,16 +25,25 @@ export function Nav() {
         <Link href="/" className="nav-brand">
           🎴<span className="nav-wide"> Meta Tracker</span>
         </Link>
+        {/* The tabs point at authenticated-only pages; an anonymous visitor
+            who clicked one would just bounce to the landing anyway. Hide them
+            until we know the caller is signed in — which also covers the brief
+            undefined-while-loading window, so the tabs don't flash in and out
+            on a fresh page load. */}
         <div className="nav-links">
-          {links.map((l) => (
-            <Link key={l.href} href={l.href} className="nav-link">
-              {l.label}
-            </Link>
-          ))}
-          {me?.role === "admin" && (
-            <Link href="/admin/cubes" className="nav-admin">
-              Admin
-            </Link>
+          {me && (
+            <>
+              {links.map((l) => (
+                <Link key={l.href} href={l.href} className="nav-link">
+                  {l.label}
+                </Link>
+              ))}
+              {me.role === "admin" && (
+                <Link href="/admin/cubes" className="nav-admin">
+                  Admin
+                </Link>
+              )}
+            </>
           )}
         </div>
         {me === undefined ? (
