@@ -18,25 +18,71 @@ function cacheOpts(revalidate: number): RequestInit {
   return revalidate === 0 ? { cache: "no-store" } : { next: { revalidate } };
 }
 
+// forwardedHeaders passes the incoming request's cookies through on server-side
+// fetches. Server components run in the Next.js process, not the browser, so the
+// cross-origin fetch to the Go backend has no cookies of its own — every
+// SSR-rendered authenticated page would 401 without this. In the browser the
+// cookie is attached automatically for the same-origin /api path, so we return
+// undefined and let the platform do it.
+//
+// A per-request fetch that carries a cookie must also opt out of Next's shared
+// ISR cache, otherwise one user's rendered page would be served to another.
+// This is why cookies() being called also forces the fetch into no-store mode
+// for that request. Downstream we merge those two headers/cache concerns via
+// serverFetchOpts below.
+async function serverFetchOpts(revalidate: number): Promise<RequestInit> {
+  if (typeof window !== "undefined") return cacheOpts(revalidate);
+  // Dynamic import so this file remains importable from client components
+  // (next/headers throws if imported into a client bundle).
+  const { cookies } = await import("next/headers");
+  const jar = cookies().toString();
+  // A request that carries a cookie is per-user by definition; ISR is unsafe
+  // for it, so we always use no-store here rather than the caller's revalidate.
+  return jar
+    ? { cache: "no-store", headers: { cookie: jar } }
+    : cacheOpts(revalidate);
+}
+
+// When the backend says the caller has no session on a server-rendered page,
+// the page cannot render. Redirect to /login rather than surface a 500 error
+// boundary. On the client we do nothing here — a background poll that suddenly
+// 401s should not yank the user out of what they were doing, and /auth/me
+// specifically expects a 401 to mean "logged out" rather than "please log in
+// right now". The client-side callers already handle null / throw themselves.
+async function redirectToLoginIfServer(): Promise<void> {
+  if (typeof window !== "undefined") return;
+  const { redirect } = await import("next/navigation");
+  redirect("/login");
+}
+
 export async function apiGet<T>(path: string, revalidate = 60): Promise<T> {
-  const res = await fetch(base() + "/api" + path, cacheOpts(revalidate));
+  const opts = await serverFetchOpts(revalidate);
+  const res = await fetch(base() + "/api" + path, opts);
+  if (res.status === 401) await redirectToLoginIfServer();
   if (!res.ok) throw new Error(`GET ${path}: ${res.status}`);
   return res.json() as Promise<T>;
 }
 
 // apiGetOptional returns null on any non-2xx (e.g. 404 when no analytics yet) or
 // when the backend is unreachable (e.g. during a build with no server running).
+// On the server a 401 is turned into a /login redirect first, so an SSR page
+// that requires auth never renders empty for an anonymous visitor; on the
+// client 401 stays null (SessionProvider polls /auth/me precisely to observe
+// that state).
 export async function apiGetOptional<T>(path: string, revalidate = 60): Promise<T | null> {
+  let res: Response;
   try {
-    const res = await fetch(base() + "/api" + path, cacheOpts(revalidate));
-    if (!res.ok) return null;
-    return (await res.json()) as T;
+    const opts = await serverFetchOpts(revalidate);
+    res = await fetch(base() + "/api" + path, opts);
   } catch (e) {
     // A page that renders empty because the backend was down is indistinguishable
     // from one that renders empty because there is no data. Leave a trace.
     console.warn(`GET ${path}: backend unreachable`, e);
     return null;
   }
+  if (res.status === 401) await redirectToLoginIfServer();
+  if (!res.ok) return null;
+  return (await res.json()) as T;
 }
 
 // apiGetNoStore is a client-only GET that skips caching and sends the session
