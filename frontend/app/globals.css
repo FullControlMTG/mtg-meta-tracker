@@ -784,16 +784,19 @@ label {
 }
 
 /* --- login marquee ---
-   Card art drifting behind the sign-in form: four horizontal lanes covering the
-   viewport, muted enough that the form still reads. The lanes' translateX
-   animates a full row width in one direction, and the row inside each lane is
-   two identical copies of the art strip end-to-end — so the second copy scrolls
-   into the seam the first left behind and the loop is silent.
+   Full card images drifting behind the sign-in form in five vertical lanes.
+   Each lane's track holds two identical strips; the animation moves the track
+   translateY(0) → translateY(-50%), which is exactly one strip's height, so
+   the second strip lands where the first was and the loop is invisible.
 
-   Each lane pins itself with .marquee (position: fixed) so it stays under the
-   scroll of a form that could grow past the viewport (an error message, a
-   virtual keyboard). z-index sits below .login-card, which lifts itself back
-   over the drift with position: relative + z-index. */
+   The seamlessness relies on two rules working together:
+     - Every <img> has aspect-ratio + width:100%, so it reserves its final
+       space *before* the fetch resolves — otherwise a lazy image is 0px
+       tall until it loads and the strips have different heights until every
+       image has arrived, and translate(-50%) points at a moving target.
+     - The strip's own padding-bottom equals the intra-strip gap. Without
+       that, the gap between strip 1's last card and strip 2's first card
+       would be zero and the reset would visibly jerk. */
 .login-shell {
   position: relative;
   z-index: 1;
@@ -813,76 +816,80 @@ label {
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
+  display: flex;
+  gap: 14px;
+  padding: 0 14px;
 }
 .marquee-lane {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 25vh;
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
-  /* animation-duration is set inline per lane (staggered), name toggled by the
-     direction modifier below. iteration-count infinite; linear so the seam
-     between the two copies of the row lands at a constant rate. */
-  animation-iteration-count: infinite;
-  animation-timing-function: linear;
-}
-.marquee-lane:nth-child(1) { top: 0; }
-.marquee-lane:nth-child(2) { top: 25vh; }
-.marquee-lane:nth-child(3) { top: 50vh; }
-.marquee-lane:nth-child(4) { top: 75vh; }
-.marquee-lane-left {
-  animation-name: marquee-drift-left;
-}
-.marquee-lane-right {
-  animation-name: marquee-drift-right;
+  position: relative;
 }
 .marquee-track {
   display: flex;
-  width: max-content;
+  flex-direction: column;
+  animation-iteration-count: infinite;
+  animation-timing-function: linear;
+  will-change: transform;
 }
-.marquee-row {
+.marquee-lane-up .marquee-track {
+  animation-name: marquee-drift-up;
+}
+.marquee-lane-down .marquee-track {
+  animation-name: marquee-drift-down;
+}
+.marquee-strip {
   display: flex;
-  gap: 12px;
-  padding: 10px 6px;
+  flex-direction: column;
+  gap: 14px;
+  /* Matches the intra-strip gap: the space between the last image of strip 1
+     and the first of strip 2 needs to look like every other gap, otherwise
+     the seam is visible. */
+  padding-bottom: 14px;
 }
 .marquee-img {
-  height: calc(25vh - 20px);
-  width: auto;
+  display: block;
+  width: 100%;
+  /* Standard Scryfall "normal" is 488x680 = the printed card's aspect. This
+     is what reserves layout space before the img resolves — critical for the
+     seamless loop. */
+  aspect-ratio: 488 / 680;
+  object-fit: cover;
   border-radius: 8px;
-  /* Art crop is high-contrast; without dulling and a blur it pulls the eye off
-     the sign-in card. saturate + brightness knock it back, blur keeps the
-     forms legible against variety. */
-  filter: saturate(0.55) brightness(0.6) blur(1px);
+  /* A card-shaped chip in the background color while the image loads, so a
+     not-yet-fetched slot doesn't flash the page color through. */
+  background: rgba(0, 0, 0, 0.35);
+  /* Full card art is loud (borders, mana, text); knock it back so the form
+     wins the eye. */
+  filter: saturate(0.55) brightness(0.55) blur(1px);
   opacity: 0.55;
   user-select: none;
   -webkit-user-drag: none;
 }
-/* A vignette that darkens the edges toward the form, and biases the middle band
-   (where the login card lives) slightly darker so the card floats over a
+/* A vignette that darkens the edges toward the form, and biases the middle
+   band (where the login card lives) slightly darker so the card floats over a
    quieter zone. */
 .marquee-overlay {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse at center, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0.55) 70%, rgba(0, 0, 0, 0.7) 100%),
-    linear-gradient(180deg, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.2));
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0.6) 70%, rgba(0, 0, 0, 0.75) 100%);
 }
-@keyframes marquee-drift-left {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
+@keyframes marquee-drift-up {
+  from { transform: translateY(0); }
+  to { transform: translateY(-50%); }
 }
-@keyframes marquee-drift-right {
-  from { transform: translateX(-50%); }
-  to { transform: translateX(0); }
+@keyframes marquee-drift-down {
+  from { transform: translateY(-50%); }
+  to { transform: translateY(0); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .marquee-lane {
-    animation: none;
-  }
-  /* The static frame reads better with the strip parked mid-loop, not at 0
-     where the seam butts against the edge. */
   .marquee-track {
-    transform: translateX(-25%);
+    animation: none;
+    /* Park mid-loop, not at 0 where the strip's top edge would butt against
+       the top of the viewport. */
+    transform: translateY(-25%);
   }
 }
 
@@ -943,6 +950,14 @@ label {
   }
   .landing-feature-inner {
     top: 20vh;
+  }
+
+  /* Five lanes at 375px would be ~65px each — the cards read as vertical
+     matchsticks. Drop the two outer lanes; the three that remain still cover
+     the viewport under the login card. */
+  .marquee-lane:nth-child(1),
+  .marquee-lane:nth-child(5) {
+    display: none;
   }
 
   h1 {

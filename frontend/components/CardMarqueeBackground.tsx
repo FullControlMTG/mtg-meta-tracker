@@ -3,30 +3,56 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiGet, type CubeView, type CubeCard } from "@/lib/api";
 
-// One horizontal band of art. The lane's own container animates a translateX
-// loop from 0 to -50%; the images inside are duplicated end-to-end, so the
-// second copy scrolls into the seam left by the first and there is no jump.
-const LANES = 4;
+// Five vertical lanes drift the pool of card images behind the login form.
+// Each lane gets an independent shuffle of every card across every cube, so
+// the four columns are visually unrelated. Two identical strips per lane,
+// with translateY(-50%) between them — see the CSS for why that is exactly
+// one strip's height and therefore seamless.
+const LANES = 5;
 
-// Card art the login page drifts across in the background. The images are the
-// cached art crops for cards in the first configured cube — the same URL a stats
-// row's hover preview would hit, so the browser cache does double duty. The
-// background degrades silently: no cube, no cards, or an unreachable backend
-// leaves an empty layer and the login form still works.
+// Base seconds-per-card for the drift speed. Multiplied by the strip length,
+// so a large pool loops slowly and a small one loops quickly rather than the
+// same number of cards per second showing at every pool size (which would be
+// a wall of blur for a big cube).
+const SECONDS_PER_CARD = 0.5;
+
+interface Loaded {
+  card_id: string;
+}
+
+// Card art the login page drifts behind the form. The images are the cached
+// full-card pngs for every card across every cube — same URL the stats-row
+// preview hits, so browser cache is reused. The background degrades silently:
+// no cubes, no cards, or an unreachable backend leaves an empty layer and the
+// login form still works.
 export function CardMarqueeBackground() {
-  const [cards, setCards] = useState<CubeCard[]>([]);
+  const [cards, setCards] = useState<Loaded[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const cubes = await apiGet<CubeView[]>("/cubes", 300);
-        const first = cubes[0];
-        if (!first) return;
-        const list = await apiGet<CubeCard[]>(`/cubes/${first.cube.id}/cards`, 300);
-        if (!cancelled) setCards(list.filter((c) => c.card_id));
+        if (cubes.length === 0) return;
+        const results = await Promise.all(
+          cubes.map((c) =>
+            apiGet<CubeCard[]>(`/cubes/${c.cube.id}/cards`, 300).catch(() => []),
+          ),
+        );
+        // One card_id can live in more than one cube; the marquee shows the
+        // picture, not the copies, so dedupe.
+        const seen = new Set<string>();
+        const flat: Loaded[] = [];
+        for (const list of results) {
+          for (const c of list) {
+            if (!c.card_id || seen.has(c.card_id)) continue;
+            seen.add(c.card_id);
+            flat.push({ card_id: c.card_id });
+          }
+        }
+        if (!cancelled) setCards(flat);
       } catch {
-        // The background is decoration; a failed fetch is not worth surfacing.
+        // Decoration; a failed fetch is not worth surfacing.
       }
     })();
     return () => {
@@ -34,26 +60,40 @@ export function CardMarqueeBackground() {
     };
   }, []);
 
-  // Split the pool across the lanes with a deterministic shuffle per mount, so
-  // the four rows aren't the alphabet in stripes but also aren't different on
-  // every rerender. Empty until the fetch resolves.
-  const lanes = useMemo(() => buildLanes(cards, LANES), [cards]);
+  // Shuffle independently per lane so the columns read as unrelated. The
+  // seed folds in the lane index, so a rerender of the same pool produces
+  // the same layout (no shuffle churn on state changes elsewhere in login).
+  const lanes = useMemo(() => {
+    if (cards.length === 0) return Array.from({ length: LANES }, () => [] as Loaded[]);
+    return Array.from({ length: LANES }, (_, i) => shuffle(cards, cards.length * 31 + i));
+  }, [cards]);
+
+  // Duration scales with strip length so a 500-card pool doesn't fly by.
+  // Staggered per lane by a prime-ish factor so no two lanes ever land at
+  // the same phase — otherwise adjacent lanes drift in visible lockstep.
+  const durations = useMemo(
+    () =>
+      lanes.map((laneCards, i) => {
+        const base = Math.max(45, laneCards.length * SECONDS_PER_CARD);
+        return base + i * 7;
+      }),
+    [lanes],
+  );
 
   return (
     <div className="marquee" aria-hidden>
       {lanes.map((laneCards, i) => (
         <div
           key={i}
-          className={`marquee-lane marquee-lane-${i % 2 === 0 ? "left" : "right"}`}
-          style={{ animationDuration: `${45 + i * 8}s` }}
+          className={`marquee-lane marquee-lane-${i % 2 === 0 ? "up" : "down"}`}
         >
-          <div className="marquee-track">
+          <div className="marquee-track" style={{ animationDuration: `${durations[i]}s` }}>
             {[0, 1].map((copy) => (
-              <div key={copy} className="marquee-row">
+              <div key={copy} className="marquee-strip">
                 {laneCards.map((c, j) => (
                   <img
                     key={`${copy}-${j}-${c.card_id}`}
-                    src={`/api/cards/${c.card_id}/image?v=art_crop`}
+                    src={`/api/cards/${c.card_id}/image?v=normal`}
                     alt=""
                     className="marquee-img"
                     loading="lazy"
@@ -70,24 +110,15 @@ export function CardMarqueeBackground() {
   );
 }
 
-function buildLanes(cards: CubeCard[], laneCount: number): CubeCard[][] {
-  if (cards.length === 0) return Array.from({ length: laneCount }, () => []);
-  // Fisher-Yates with a fixed seed derived from the pool size, so a rerender
-  // that hands in the same list produces the same order — no reshuffle churn.
-  const shuffled = [...cards];
-  let seed = cards.length * 2654435761;
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    const j = seed % (i + 1);
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+// Fisher-Yates with a fixed seed so a rerender with the same input produces
+// the same order — no reshuffle churn.
+function shuffle<T>(items: T[], seed: number): T[] {
+  const out = items.slice();
+  let s = seed >>> 0;
+  for (let i = out.length - 1; i > 0; i--) {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    const j = s % (i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
   }
-  // Each lane gets every card, sliced from a rotated starting point — so a
-  // small cube still fills every lane, and no two lanes start on the same art.
-  const lanes: CubeCard[][] = [];
-  const rotation = Math.max(1, Math.floor(shuffled.length / laneCount));
-  for (let l = 0; l < laneCount; l++) {
-    const start = (l * rotation) % shuffled.length;
-    lanes.push([...shuffled.slice(start), ...shuffled.slice(0, start)]);
-  }
-  return lanes;
+  return out;
 }
