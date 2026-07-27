@@ -16,7 +16,13 @@ type Config struct {
 	DatabaseURL       string
 	HTTPAddr          string
 	SessionCookieName string
-	SessionTTL        time.Duration
+	// SessionCookieSecure sets the cookie's Secure attribute, so the browser
+	// only sends it back over HTTPS. Defaults true so a production deployment
+	// that forgets to configure it still ships a Secure cookie; local dev
+	// overrides to false (see Makefile) so `make backend` works over
+	// http://localhost:8080 without TLS.
+	SessionCookieSecure bool
+	SessionTTL          time.Duration
 
 	GoogleClientID     string
 	GoogleClientSecret string
@@ -51,6 +57,7 @@ func Load() Config {
 		DatabaseURL:         env("DATABASE_URL", "postgres://mtg:mtg@localhost:5432/mtg_meta?sslmode=disable"),
 		HTTPAddr:            env("HTTP_ADDR", ":8080"),
 		SessionCookieName:   env("SESSION_COOKIE_NAME", "mtg_session"),
+		SessionCookieSecure: envBool("SESSION_COOKIE_SECURE", true),
 		SessionTTL:          time.Duration(envInt("SESSION_TTL_HOURS", 720)) * time.Hour,
 		GoogleClientID:      env("GOOGLE_CLIENT_ID", ""),
 		GoogleClientSecret:  env("GOOGLE_CLIENT_SECRET", ""),
@@ -93,5 +100,20 @@ func envInt(k string, def int) int {
 			return n
 		}
 	}
+	return def
+}
+
+// envBool reads a boolean env var. Unparseable values fall through to the
+// default rather than silently reading as false — a typo in a security flag
+// should not quietly demote it to off.
+func envBool(k string, def bool) bool {
+	v := os.Getenv(k)
+	if v == "" {
+		return def
+	}
+	if b, err := strconv.ParseBool(v); err == nil {
+		return b
+	}
+	log.Printf("config: unparseable %s=%q; using default %v", k, v, def)
 	return def
 }

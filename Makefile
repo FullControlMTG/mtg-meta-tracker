@@ -20,7 +20,10 @@ db-schema:    ## dump live schema -> db/schema.generated.sql for diffing
 	$(COMPOSE_DEV) exec -T db pg_dump --schema-only --no-owner --no-privileges -U mtg mtg_meta > db/schema.generated.sql
 
 backend:      ## run the API on :8080 (defaults connect to the dev db above)
-	cd backend && go run ./cmd/server
+	# SESSION_COOKIE_SECURE defaults true so a prod deployment that forgets it
+	# still ships a Secure cookie; the local server is plain HTTP, so override
+	# to false or the browser drops the cookie and login silently fails.
+	cd backend && SESSION_COOKIE_SECURE=false go run ./cmd/server
 
 frontend:     ## run Next.js on :3000, proxying /api -> :8080
 	cd frontend && npm run dev

@@ -59,10 +59,14 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, value string, expires t
 		Path:     "/",
 		Expires:  expires,
 		HttpOnly: true,
+		Secure:   s.cfg.SessionCookieSecure,
 		SameSite: http.SameSiteLaxMode,
 	})
 }
 
+// The clearing cookie must carry the same Secure/HttpOnly/SameSite attributes
+// as the one it replaces; a browser treats a cookie with different attributes
+// as a different cookie and would leave the original in place.
 func (s *Server) clearSessionCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.cfg.SessionCookieName,
@@ -71,6 +75,7 @@ func (s *Server) clearSessionCookie(w http.ResponseWriter) {
 		Expires:  time.Unix(0, 0),
 		MaxAge:   -1,
 		HttpOnly: true,
+		Secure:   s.cfg.SessionCookieSecure,
 		SameSite: http.SameSiteLaxMode,
 	})
 }
