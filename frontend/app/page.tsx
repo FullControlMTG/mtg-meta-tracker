@@ -1,17 +1,93 @@
-import { redirect } from "next/navigation";
-import { getDefaultCube } from "@/lib/cube";
+"use client";
 
-// All stats are cube-scoped, so the landing page is just the first cube's stats.
-export const dynamic = "force-dynamic";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useSession } from "@/components/SessionProvider";
 
-export default async function Home() {
-  const cube = await getDefaultCube(0);
-  if (cube) redirect(`/analytics/${cube.cube.id}`);
+// Anonymous visitors get the marketing landing; a signed-in user goes to /cubes,
+// the hub they picked a cube from before anything cube-scoped rendered.
+export default function Home() {
+  const router = useRouter();
+  const { me } = useSession();
+
+  useEffect(() => {
+    if (me) router.replace("/cubes");
+  }, [me, router]);
+
+  // While the session is loading, or an authenticated user is about to be
+  // redirected, render nothing rather than a landing that will flash and vanish.
+  if (me === undefined || me) {
+    return <main className="container" aria-hidden />;
+  }
 
   return (
-    <main className="container">
-      <h1>Meta Tracker</h1>
-      <p className="muted">No cube configured yet. An admin can add one.</p>
+    <main className="landing">
+      <section className="landing-hero">
+        <div className="landing-hero-inner">
+          <h1 className="landing-title">
+            🎴 Meta Tracker
+          </h1>
+          <p className="landing-tagline">
+            A metagame dashboard for your local Magic: The Gathering cube.
+          </p>
+          <div className="landing-cta">
+            <Link href="/login" className="button">
+              Sign in
+            </Link>
+            <p className="muted" style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}>
+              No account? Ask an admin to create one for you.
+            </p>
+          </div>
+          <div className="landing-hero-hint" aria-hidden>
+            <span>Scroll</span>
+            <span className="landing-hero-hint-arrow">↓</span>
+          </div>
+        </div>
+      </section>
+
+      <LandingFeature
+        icon="🃏"
+        title="Build and Manage Decks and Cubes"
+        body="Paste a cube list and every card resolves against Scryfall. Players upload the decks they built from the pool, and the site tracks each printing, casting cost, and color."
+        variant="a"
+      />
+      <LandingFeature
+        icon="📊"
+        title="Track Your Metagame"
+        body="Aggregate snapshots surface color share, card popularity, card co-occurrence, and deck-level metrics — the shape of your playgroup's meta, recomputed as new decks land."
+        variant="b"
+      />
+      <LandingFeature
+        icon="👥"
+        title="Share With Your Playgroup"
+        body="One deployment for one group. Everyone signs in, everyone's decks live in the same table, and the stats reflect what the room is actually playing."
+        variant="c"
+      />
     </main>
+  );
+}
+
+interface LandingFeatureProps {
+  icon: string;
+  title: string;
+  body: string;
+  variant: "a" | "b" | "c";
+}
+
+// A parallax section: the sticky background sits still while the caption
+// scrolls past it, so each feature reads as one panel handed off to the next.
+function LandingFeature({ icon, title, body, variant }: LandingFeatureProps) {
+  return (
+    <section className={`landing-feature landing-feature-${variant}`}>
+      <div className="landing-feature-bg" aria-hidden />
+      <div className="landing-feature-inner">
+        <div className="landing-feature-icon" aria-hidden>
+          {icon}
+        </div>
+        <h2 className="landing-feature-title">{title}</h2>
+        <p className="landing-feature-body">{body}</p>
+      </div>
+    </section>
   );
 }

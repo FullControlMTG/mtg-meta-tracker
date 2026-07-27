@@ -650,6 +650,139 @@ label {
   font-size: 1rem;
 }
 
+/* --- landing ---
+   The anonymous entry point. Four full-viewport sections stacked vertically: a hero
+   with the sign-in CTA, then three feature panels. Each feature's background is a
+   `position: sticky` layer that outlasts its own caption's scroll — the caption drifts
+   over a background that is briefly still, which is the parallax the page trades on. */
+.landing {
+  padding: 0;
+}
+.landing-hero {
+  min-height: calc(100vh - 60px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.5rem 6rem;
+  background:
+    radial-gradient(1200px 600px at 20% 10%, rgba(42, 120, 214, 0.18), transparent 60%),
+    radial-gradient(900px 500px at 85% 90%, rgba(208, 59, 59, 0.14), transparent 60%),
+    var(--page);
+}
+.landing-hero-inner {
+  position: relative;
+  max-width: 720px;
+  text-align: center;
+}
+.landing-title {
+  font-size: clamp(2.4rem, 6vw, 4rem);
+  letter-spacing: -0.02em;
+  margin-bottom: 1rem;
+}
+.landing-tagline {
+  font-size: clamp(1.05rem, 2vw, 1.25rem);
+  color: var(--text-secondary);
+  margin: 0 0 2rem;
+}
+.landing-cta {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+}
+/* The hint sits under the hero, well below the CTA, so a mouse that reads left-to-right
+   isn't drawn to it before it sees the button. */
+.landing-hero-hint {
+  position: absolute;
+  left: 50%;
+  bottom: -4rem;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.landing-hero-hint-arrow {
+  font-size: 1.1rem;
+  animation: landing-bob 2.2s ease-in-out infinite;
+}
+@keyframes landing-bob {
+  0%, 100% { transform: translateY(0); opacity: 0.55; }
+  50% { transform: translateY(4px); opacity: 1; }
+}
+
+/* The feature section is a scrollable container for the sticky background. The
+   caption is a normal flow child — it scrolls past the background — and the
+   background is pinned inside the section, so it stops moving when the next
+   section pushes the container out of view. */
+.landing-feature {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6rem 1.5rem;
+}
+.landing-feature-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+/* Each panel gets a distinct wash so the transitions read; the accent radials are
+   large and off-center so they behave like a lit background, not a graphic. */
+.landing-feature-a .landing-feature-bg {
+  background:
+    radial-gradient(800px 600px at 80% 20%, rgba(42, 120, 214, 0.22), transparent 65%),
+    linear-gradient(180deg, var(--page) 0%, var(--surface) 100%);
+}
+.landing-feature-b .landing-feature-bg {
+  background:
+    radial-gradient(900px 500px at 20% 70%, rgba(12, 163, 12, 0.18), transparent 65%),
+    linear-gradient(180deg, var(--surface) 0%, var(--page) 100%);
+}
+.landing-feature-c .landing-feature-bg {
+  background:
+    radial-gradient(700px 600px at 60% 30%, rgba(208, 59, 59, 0.16), transparent 65%),
+    radial-gradient(700px 500px at 30% 80%, rgba(42, 120, 214, 0.14), transparent 65%),
+    linear-gradient(180deg, var(--page) 0%, var(--surface) 100%);
+}
+.landing-feature-inner {
+  position: sticky;
+  top: 30vh;
+  z-index: 1;
+  max-width: 640px;
+  text-align: center;
+}
+.landing-feature-icon {
+  font-size: clamp(2.8rem, 6vw, 4rem);
+  line-height: 1;
+  margin-bottom: 1rem;
+}
+.landing-feature-title {
+  font-size: clamp(1.6rem, 3.5vw, 2.4rem);
+  letter-spacing: -0.015em;
+  margin-bottom: 0.85rem;
+}
+.landing-feature-body {
+  font-size: clamp(1rem, 1.4vw, 1.1rem);
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing-hero-hint-arrow {
+    animation: none;
+  }
+  .landing-feature-inner {
+    position: static;
+  }
+}
+
 /* --- mobile ---
    The app's one width breakpoint. Everything above is written for a desktop; this is the
    whole of what a phone changes. Keep it that way — a second number to remember is a
@@ -697,6 +830,16 @@ label {
 
   .card-sections {
     gap: 1.5rem;
+  }
+
+  /* The sticky caption needs a taller offset on a phone: the header takes a larger
+     share of a short viewport, and the icon + heading + body wants breathing room
+     under it. */
+  .landing-feature {
+    padding: 4rem 1rem;
+  }
+  .landing-feature-inner {
+    top: 20vh;
   }
 
   h1 {
