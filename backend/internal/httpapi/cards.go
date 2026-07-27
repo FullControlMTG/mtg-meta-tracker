@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -25,6 +26,34 @@ type CardDetail struct {
 	ColorCountSplit []store.ColorStat `json:"color_count_split"`
 	Pairs           []store.CardPair  `json:"pairs"`
 	Decks           []store.DeckBrief `json:"decks"`
+}
+
+// handleSampleCards returns up to n random scryfall_ids for cards that have a
+// cached image. The endpoint is public — the payload is a random slice of
+// Scryfall UUIDs with no attribution to any cube or user, and the same UUIDs
+// are already reachable via the public /cards/{id}/image proxy. Consumed by
+// the anonymous login page's card marquee background.
+func (s *Server) handleSampleCards(w http.ResponseWriter, r *http.Request) {
+	n := 200
+	if q := r.URL.Query().Get("n"); q != "" {
+		if parsed, err := strconv.Atoi(q); err == nil {
+			n = parsed
+		}
+	}
+	// Bounds: 1 keeps the query well-formed, 500 caps a bad actor's ability
+	// to page through the catalog by asking for very large samples.
+	if n < 1 {
+		n = 1
+	}
+	if n > 500 {
+		n = 500
+	}
+	ids, err := s.store.SampleCardIDs(r.Context(), n)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "could not sample cards")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"card_ids": ids})
 }
 
 func (s *Server) handleGetCard(w http.ResponseWriter, r *http.Request) {

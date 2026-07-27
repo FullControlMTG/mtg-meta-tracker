@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { apiGet, type CubeView, type CubeCard } from "@/lib/api";
+import { apiGet } from "@/lib/api";
 
 // Five vertical lanes drift the pool of card images behind the login form.
-// Each lane gets an independent shuffle of every card across every cube, so
-// the four columns are visually unrelated. Two identical strips per lane,
-// with translateY(-50%) between them — see the CSS for why that is exactly
-// one strip's height and therefore seamless.
+// Each lane gets an independent shuffle of the sampled pool, so the columns
+// are visually unrelated. Two identical strips per lane, with translateY(-50%)
+// between them — see the CSS for why that is exactly one strip's height and
+// therefore seamless.
 const LANES = 5;
 
 // Base seconds-per-card for the drift speed. Multiplied by the strip length,
@@ -16,41 +16,30 @@ const LANES = 5;
 // a wall of blur for a big cube).
 const SECONDS_PER_CARD = 4.5;
 
-interface Loaded {
-  card_id: string;
+// The number of Scryfall UUIDs to pull for the marquee. Matches roughly the
+// number of cards visible across all five lanes on a tall viewport before the
+// loop repeats, so a visitor sees variety before seeing anything twice.
+const SAMPLE_SIZE = 300;
+
+interface SampleResponse {
+  card_ids: string[];
 }
 
-// Card art the login page drifts behind the form. The images are the cached
-// full-card pngs for every card across every cube — same URL the stats-row
-// preview hits, so browser cache is reused. The background degrades silently:
-// no cubes, no cards, or an unreachable backend leaves an empty layer and the
-// login form still works.
+// Card art the login page drifts behind the form. The images are cached
+// full-card pngs for a random sample of the card catalog, fetched from a
+// dedicated public endpoint so the anonymous login screen never needs to
+// authenticate. The background degrades silently: an empty response or a
+// failed fetch leaves the tinted overlay and the form still works.
 export function CardMarqueeBackground() {
-  const [cards, setCards] = useState<Loaded[]>([]);
+  const [cards, setCards] = useState<{ card_id: string }[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const cubes = await apiGet<CubeView[]>("/cubes", 300);
-        if (cubes.length === 0) return;
-        const results = await Promise.all(
-          cubes.map((c) =>
-            apiGet<CubeCard[]>(`/cubes/${c.cube.id}/cards`, 300).catch(() => []),
-          ),
-        );
-        // One card_id can live in more than one cube; the marquee shows the
-        // picture, not the copies, so dedupe.
-        const seen = new Set<string>();
-        const flat: Loaded[] = [];
-        for (const list of results) {
-          for (const c of list) {
-            if (!c.card_id || seen.has(c.card_id)) continue;
-            seen.add(c.card_id);
-            flat.push({ card_id: c.card_id });
-          }
-        }
-        if (!cancelled) setCards(flat);
+        const res = await apiGet<SampleResponse>(`/cards/sample?n=${SAMPLE_SIZE}`, 300);
+        if (cancelled) return;
+        setCards(res.card_ids.map((id) => ({ card_id: id })));
       } catch {
         // Decoration; a failed fetch is not worth surfacing.
       }
@@ -64,7 +53,7 @@ export function CardMarqueeBackground() {
   // seed folds in the lane index, so a rerender of the same pool produces
   // the same layout (no shuffle churn on state changes elsewhere in login).
   const lanes = useMemo(() => {
-    if (cards.length === 0) return Array.from({ length: LANES }, () => [] as Loaded[]);
+    if (cards.length === 0) return Array.from({ length: LANES }, () => [] as { card_id: string }[]);
     return Array.from({ length: LANES }, (_, i) => shuffle(cards, cards.length * 31 + i));
   }, [cards]);
 

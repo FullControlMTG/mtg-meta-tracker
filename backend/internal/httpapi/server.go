@@ -71,6 +71,11 @@ func (s *Server) Router() http.Handler {
 			// serves publicly, cached at this origin so authenticated pages
 			// don't need to embed cookies in image URLs.
 			r.Get("/cards/{id}/image", s.handleCardImage)
+			// Random card-id sampler for the anonymous login page's marquee
+			// background. Returns Scryfall UUIDs only — no attribution to
+			// any cube or user — so it stays inside the "card data" the
+			// image proxy already exposes.
+			r.Get("/cards/sample", s.handleSampleCards)
 			// The playgroup's calendar day is server-only knowledge but not
 			// user-scoped; the login form asks for it before there is a user.
 			r.Get("/today", s.handleToday)

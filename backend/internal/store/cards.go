@@ -28,6 +28,29 @@ func (s *Store) UpsertCard(ctx context.Context, c *domain.Card) error {
 	return err
 }
 
+// SampleCardIDs returns up to n random scryfall_ids drawn from cards that
+// have a cached "normal" image. Used by the anonymous login-page marquee —
+// the endpoint is public, and filtering to cards with an image keeps the
+// marquee from linking img tags that would 404 out of the cache proxy.
+func (s *Store) SampleCardIDs(ctx context.Context, n int) ([]uuid.UUID, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT scryfall_id FROM cards WHERE image_normal IS NOT NULL
+		 ORDER BY random() LIMIT $1`, n)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := make([]uuid.UUID, 0, n)
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // GetCardImageURL returns the canonical Scryfall image URL for a card and
 // variant (one of "small", "normal", "art_crop"). Returns ErrNotFound when the
 // card is unknown or that variant has no URL.
