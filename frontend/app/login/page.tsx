@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiPost, type PublicUser } from "@/lib/api";
 import { useSession } from "@/components/SessionProvider";
+import { CardMarqueeBackground } from "@/components/CardMarqueeBackground";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -32,9 +33,10 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="container" style={{ maxWidth: 420 }}>
+    <main className="container login-shell" style={{ maxWidth: 420 }}>
+      <CardMarqueeBackground />
       <h1>Sign in</h1>
-      <form onSubmit={submit} className="card">
+      <form onSubmit={submit} className="card login-card">
         <label htmlFor="login">Username or email</label>
         <input
           id="login"

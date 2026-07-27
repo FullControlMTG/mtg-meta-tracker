@@ -783,6 +783,109 @@ label {
   }
 }
 
+/* --- login marquee ---
+   Card art drifting behind the sign-in form: four horizontal lanes covering the
+   viewport, muted enough that the form still reads. The lanes' translateX
+   animates a full row width in one direction, and the row inside each lane is
+   two identical copies of the art strip end-to-end — so the second copy scrolls
+   into the seam the first left behind and the loop is silent.
+
+   Each lane pins itself with .marquee (position: fixed) so it stays under the
+   scroll of a form that could grow past the viewport (an error message, a
+   virtual keyboard). z-index sits below .login-card, which lifts itself back
+   over the drift with position: relative + z-index. */
+.login-shell {
+  position: relative;
+  z-index: 1;
+}
+.login-card {
+  position: relative;
+  z-index: 1;
+  /* On the dark surface the card and the muted art get close in luminance; a
+     touch of translucency + backdrop-blur separates the two without needing an
+     opaque panel that would fight the mood. */
+  backdrop-filter: blur(6px);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+.marquee {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.marquee-lane {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 25vh;
+  overflow: hidden;
+  /* animation-duration is set inline per lane (staggered), name toggled by the
+     direction modifier below. iteration-count infinite; linear so the seam
+     between the two copies of the row lands at a constant rate. */
+  animation-iteration-count: infinite;
+  animation-timing-function: linear;
+}
+.marquee-lane:nth-child(1) { top: 0; }
+.marquee-lane:nth-child(2) { top: 25vh; }
+.marquee-lane:nth-child(3) { top: 50vh; }
+.marquee-lane:nth-child(4) { top: 75vh; }
+.marquee-lane-left {
+  animation-name: marquee-drift-left;
+}
+.marquee-lane-right {
+  animation-name: marquee-drift-right;
+}
+.marquee-track {
+  display: flex;
+  width: max-content;
+}
+.marquee-row {
+  display: flex;
+  gap: 12px;
+  padding: 10px 6px;
+}
+.marquee-img {
+  height: calc(25vh - 20px);
+  width: auto;
+  border-radius: 8px;
+  /* Art crop is high-contrast; without dulling and a blur it pulls the eye off
+     the sign-in card. saturate + brightness knock it back, blur keeps the
+     forms legible against variety. */
+  filter: saturate(0.55) brightness(0.6) blur(1px);
+  opacity: 0.55;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+/* A vignette that darkens the edges toward the form, and biases the middle band
+   (where the login card lives) slightly darker so the card floats over a
+   quieter zone. */
+.marquee-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0.55) 70%, rgba(0, 0, 0, 0.7) 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.2));
+}
+@keyframes marquee-drift-left {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@keyframes marquee-drift-right {
+  from { transform: translateX(-50%); }
+  to { transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee-lane {
+    animation: none;
+  }
+  /* The static frame reads better with the strip parked mid-loop, not at 0
+     where the seam butts against the edge. */
+  .marquee-track {
+    transform: translateX(-25%);
+  }
+}
+
 /* --- mobile ---
    The app's one width breakpoint. Everything above is written for a desktop; this is the
    whole of what a phone changes. Keep it that way — a second number to remember is a
