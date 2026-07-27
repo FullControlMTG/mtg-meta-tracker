@@ -14,7 +14,7 @@ const LANES = 5;
 // so a large pool loops slowly and a small one loops quickly rather than the
 // same number of cards per second showing at every pool size (which would be
 // a wall of blur for a big cube).
-const SECONDS_PER_CARD = 0.5;
+const SECONDS_PER_CARD = 1.5;
 
 interface Loaded {
   card_id: string;
@@ -74,8 +74,8 @@ export function CardMarqueeBackground() {
   const durations = useMemo(
     () =>
       lanes.map((laneCards, i) => {
-        const base = Math.max(45, laneCards.length * SECONDS_PER_CARD);
-        return base + i * 7;
+        const base = Math.max(135, laneCards.length * SECONDS_PER_CARD);
+        return base + i * 21;
       }),
     [lanes],
   );
