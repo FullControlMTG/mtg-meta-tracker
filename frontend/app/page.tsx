@@ -24,10 +24,10 @@ export default function Home() {
 
   return (
     <main className="landing">
+      {/* One marquee for the whole page, not one per section: it is viewport-pinned,
+          so every panel below scrolls over the same continuous drift. */}
+      <CardMarqueeBackground />
       <section className="landing-hero">
-        {/* Contained, not viewport-pinned: the hero is one panel of a four-panel
-            scroll, and the feature panels below have their own opaque backgrounds. */}
-        <CardMarqueeBackground contained />
         <div className="landing-hero-inner">
           <h1 className="landing-title">
             🎴 Meta Tracker
@@ -79,8 +79,10 @@ interface LandingFeatureProps {
   variant: "a" | "b" | "c";
 }
 
-// A parallax section: the sticky background sits still while the caption
-// scrolls past it, so each feature reads as one panel handed off to the next.
+// A parallax section, in three planes: the page-wide marquee behind everything
+// (pinned, so it never moves), this section's colour wash (scrolls at page
+// speed), and the caption (sticky, so it holds still while its wash travels
+// under it and then releases when the next section arrives).
 function LandingFeature({ icon, title, body, variant }: LandingFeatureProps) {
   return (
     <section className={`landing-feature landing-feature-${variant}`}>

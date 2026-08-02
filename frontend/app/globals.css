@@ -97,7 +97,13 @@ h3 {
 /* One row, at every width: it scrolls sideways before it wraps, so a long display name
    can never push the tabs onto a second line. Nav.tsx swaps the wordy parts out below
    the breakpoint; what remains is the emoji, the tabs, and the account. */
+/* Positioned so it outranks the marquee. The marquee is `position: fixed`, which
+   paints above every static block on the page — including this bar — so on the
+   login and landing pages the nav needs a stacking order of its own or the card
+   art drifts across it. */
 .nav {
+  position: relative;
+  z-index: 2;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
@@ -660,28 +666,33 @@ label {
 
 /* --- landing ---
    The anonymous entry point. Four full-viewport sections stacked vertically: a hero
-   with the sign-in CTA, then three feature panels. Each feature's background is a
-   `position: sticky` layer that outlasts its own caption's scroll — the caption drifts
-   over a background that is briefly still, which is the parallax the page trades on. */
+   with the sign-in CTA, then three feature panels. The whole page scrolls over one
+   viewport-pinned card marquee, and that is the parallax: the marquee is a far plane
+   that never moves, each section's colour wash travels at page speed, and the caption
+   inside it is `position: sticky` so it holds while its own wash slides under it.
+
+   Which means *every* background in this block has to stay translucent. An opaque
+   layer here — `var(--page)`, `var(--surface)` — is painted over the marquee and
+   punches a hole in it for the height of that section. The washes below are all rgba
+   or colour-mix for exactly that reason; keep them that way. */
 .landing {
   padding: 0;
 }
-/* Positioned and clipped because it hosts the contained marquee: the drifting
-   lanes are absolute against this box, and the tracks are far taller than it. The
-   gradient stays as what shows through the vignette — and as what the hero looks
-   like in the seconds before the sampled art arrives, or if it never does. */
+/* Positioned so it paints above the marquee rather than under it, like the feature
+   sections below. The dark centre radial is first in the stack: the marquee's own
+   vignette is at its lightest in the middle of the viewport, which is where the
+   title sits, so the hero deepens it locally to keep the type off the art. */
 .landing-hero {
   position: relative;
-  overflow: hidden;
   min-height: calc(100vh - 60px);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 2rem 1.5rem 6rem;
   background:
-    radial-gradient(1200px 600px at 20% 10%, rgba(42, 120, 214, 0.18), transparent 60%),
-    radial-gradient(900px 500px at 85% 90%, rgba(208, 59, 59, 0.14), transparent 60%),
-    var(--page);
+    radial-gradient(900px 650px at 50% 45%, rgba(0, 0, 0, 0.55), transparent 72%),
+    radial-gradient(1200px 600px at 20% 10%, rgba(42, 120, 214, 0.2), transparent 60%),
+    radial-gradient(900px 500px at 85% 90%, rgba(208, 59, 59, 0.16), transparent 60%);
 }
 .landing-hero-inner {
   position: relative;
@@ -694,16 +705,22 @@ label {
    its own white. */
 .landing-hero-inner .muted {
   color: var(--on-marquee-secondary);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.8);
 }
+/* The hero's type sits straight on the marquee with no panel of its own — it is
+   large enough to carry itself, the way the login page's heading does. The shadow
+   is what covers the case where a pale card drifts directly behind a letterform. */
 .landing-title {
   font-size: clamp(2.4rem, 6vw, 4rem);
   letter-spacing: -0.02em;
   margin-bottom: 1rem;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.7);
 }
 .landing-tagline {
   font-size: clamp(1.05rem, 2vw, 1.25rem);
   color: var(--on-marquee-secondary);
   margin: 0 0 2rem;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.75);
 }
 .landing-cta {
   display: inline-flex;
@@ -722,6 +739,7 @@ label {
   align-items: center;
   gap: 0.35rem;
   color: var(--on-marquee-secondary);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.8);
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -735,10 +753,8 @@ label {
   50% { transform: translateY(4px); opacity: 1; }
 }
 
-/* The feature section is a scrollable container for the sticky background. The
-   caption is a normal flow child — it scrolls past the background — and the
-   background is pinned inside the section, so it stops moving when the next
-   section pushes the container out of view. */
+/* The middle plane. The section scrolls at page speed carrying its wash, the
+   caption inside it sticks, and the marquee behind both stays where it is. */
 .landing-feature {
   position: relative;
   min-height: 100vh;
@@ -755,29 +771,44 @@ label {
   pointer-events: none;
 }
 /* Each panel gets a distinct wash so the transitions read; the accent radials are
-   large and off-center so they behave like a lit background, not a graphic. */
+   large and off-center so they behave like a lit background, not a graphic. Each
+   stack ends in a black scrim rather than a page-coloured one — it has to let the
+   marquee through, and it has to darken it, because the caption on top is light
+   type. The scrim is what makes three sections of drifting card art read as three
+   different rooms instead of one continuous wall. */
 .landing-feature-a .landing-feature-bg {
   background:
-    radial-gradient(800px 600px at 80% 20%, rgba(42, 120, 214, 0.22), transparent 65%),
-    linear-gradient(180deg, var(--page) 0%, var(--surface) 100%);
+    radial-gradient(800px 600px at 80% 20%, rgba(42, 120, 214, 0.28), transparent 65%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.42) 0%, rgba(0, 0, 0, 0.58) 100%);
 }
 .landing-feature-b .landing-feature-bg {
   background:
-    radial-gradient(900px 500px at 20% 70%, rgba(12, 163, 12, 0.18), transparent 65%),
-    linear-gradient(180deg, var(--surface) 0%, var(--page) 100%);
+    radial-gradient(900px 500px at 20% 70%, rgba(12, 163, 12, 0.24), transparent 65%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.58) 0%, rgba(0, 0, 0, 0.42) 100%);
 }
 .landing-feature-c .landing-feature-bg {
   background:
-    radial-gradient(700px 600px at 60% 30%, rgba(208, 59, 59, 0.16), transparent 65%),
-    radial-gradient(700px 500px at 30% 80%, rgba(42, 120, 214, 0.14), transparent 65%),
-    linear-gradient(180deg, var(--page) 0%, var(--surface) 100%);
+    radial-gradient(700px 600px at 60% 30%, rgba(208, 59, 59, 0.22), transparent 65%),
+    radial-gradient(700px 500px at 30% 80%, rgba(42, 120, 214, 0.18), transparent 65%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.42) 0%, rgba(0, 0, 0, 0.58) 100%);
 }
+/* The caption is a panel for the same reason the login form is one: a paragraph of
+   body copy over full card art is unreadable no matter how the art is dimmed, and a
+   translucent blurred slab separates the two without going opaque and killing the
+   backdrop. Dark rather than --surface, because the type on it is light in both
+   colour schemes — see --on-marquee. */
 .landing-feature-inner {
   position: sticky;
   top: 30vh;
   z-index: 1;
   max-width: 640px;
+  padding: 2.25rem 2rem;
   text-align: center;
+  color: var(--on-marquee);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius);
+  background: rgba(10, 10, 12, 0.55);
+  backdrop-filter: blur(10px);
 }
 .landing-feature-icon {
   font-size: clamp(2.8rem, 6vw, 4rem);
@@ -791,7 +822,7 @@ label {
 }
 .landing-feature-body {
   font-size: clamp(1rem, 1.4vw, 1.1rem);
-  color: var(--text-secondary);
+  color: var(--on-marquee-secondary);
   line-height: 1.6;
   margin: 0;
 }
@@ -849,13 +880,6 @@ label {
   display: flex;
   gap: 14px;
   padding: 0 14px;
-}
-/* Fills the nearest positioned ancestor instead of the viewport. For the landing
-   hero, which is the first screen of a page that keeps scrolling: pinned, the
-   lanes would go on animating under three opaque feature panels for the rest of
-   the page. */
-.marquee-contained {
-  position: absolute;
 }
 .marquee-lane {
   flex: 1;
@@ -987,6 +1011,7 @@ label {
   }
   .landing-feature-inner {
     top: 20vh;
+    padding: 1.5rem 1.25rem;
   }
 
   /* Five lanes at 375px would be ~65px each — the cards read as vertical

@@ -25,21 +25,16 @@ interface SampleResponse {
   card_ids: string[];
 }
 
-interface CardMarqueeBackgroundProps {
-  // Pin to the viewport (the login screen, which is one screen tall) or fill the
-  // nearest positioned ancestor (the landing hero, which is one panel of a page
-  // that scrolls for several more). Containing it means the drift stops existing
-  // once the hero is scrolled past, instead of animating unseen behind the
-  // opaque feature panels for the rest of the page.
-  contained?: boolean;
-}
-
 // Card art drifting behind an anonymous page's content. The images are cached
 // full-card pngs for a random sample of the card catalog, fetched from a
 // dedicated public endpoint so a signed-out visitor never needs to
 // authenticate. The background degrades silently: an empty response or a
 // failed fetch leaves the tinted overlay and the page still works.
-export function CardMarqueeBackground({ contained = false }: CardMarqueeBackgroundProps) {
+//
+// It is pinned to the viewport, so on the landing page — which scrolls for four
+// screens — it stays put while the panels travel over it. That is the whole
+// parallax: the marquee is the far plane and never moves with the scroll.
+export function CardMarqueeBackground() {
   const [cards, setCards] = useState<{ card_id: string }[]>([]);
 
   useEffect(() => {
@@ -79,7 +74,7 @@ export function CardMarqueeBackground({ contained = false }: CardMarqueeBackgrou
   );
 
   return (
-    <div className={`marquee${contained ? " marquee-contained" : ""}`} aria-hidden>
+    <div className="marquee" aria-hidden>
       {lanes.map((laneCards, i) => (
         <div
           key={i}
