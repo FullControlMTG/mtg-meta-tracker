@@ -20,6 +20,14 @@
      neighbour a Mardu wheel read as Boros with a hole in it. Whatever this becomes,
      it has to stay plainly lighter than the darkest hex in the pie. */
   --pip-off: #c9c8c0;
+  /* Text that sits directly on the card marquee. Its vignette is dark in both
+     colour schemes — the art underneath is knocked back with brightness(0.55),
+     so a light overlay would only turn it to mud — which means --text, a
+     near-black in light mode, disappears into it. These two are deliberately
+     literal values and deliberately absent from the dark block: the surface they
+     sit on does not change with the scheme, so neither do they. */
+  --on-marquee: #f4f4f2;
+  --on-marquee-secondary: rgba(244, 244, 242, 0.74);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -658,7 +666,13 @@ label {
 .landing {
   padding: 0;
 }
+/* Positioned and clipped because it hosts the contained marquee: the drifting
+   lanes are absolute against this box, and the tracks are far taller than it. The
+   gradient stays as what shows through the vignette — and as what the hero looks
+   like in the seconds before the sampled art arrives, or if it never does. */
 .landing-hero {
+  position: relative;
+  overflow: hidden;
   min-height: calc(100vh - 60px);
   display: flex;
   align-items: center;
@@ -671,8 +685,15 @@ label {
 }
 .landing-hero-inner {
   position: relative;
+  z-index: 1;
   max-width: 720px;
   text-align: center;
+  color: var(--on-marquee);
+}
+/* The hero's own copy — everything but the CTA, which carries the accent fill and
+   its own white. */
+.landing-hero-inner .muted {
+  color: var(--on-marquee-secondary);
 }
 .landing-title {
   font-size: clamp(2.4rem, 6vw, 4rem);
@@ -681,7 +702,7 @@ label {
 }
 .landing-tagline {
   font-size: clamp(1.05rem, 2vw, 1.25rem);
-  color: var(--text-secondary);
+  color: var(--on-marquee-secondary);
   margin: 0 0 2rem;
 }
 .landing-cta {
@@ -700,7 +721,7 @@ label {
   flex-direction: column;
   align-items: center;
   gap: 0.35rem;
-  color: var(--muted);
+  color: var(--on-marquee-secondary);
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -783,8 +804,9 @@ label {
   }
 }
 
-/* --- login marquee ---
-   Full card images drifting behind the sign-in form in five vertical lanes.
+/* --- card marquee ---
+   Full card images drifting behind an anonymous page's content in five vertical
+   lanes — the sign-in form, and the landing hero.
    Each lane's track holds two identical strips; the animation moves the track
    translateY(0) → translateY(-50%), which is exactly one strip's height, so
    the second strip lands where the first was and the loop is invisible.
@@ -800,6 +822,14 @@ label {
 .login-shell {
   position: relative;
   z-index: 1;
+}
+/* The heading and the closing note sit on the vignette rather than on the card,
+   so they take the marquee's own foreground colours. */
+.login-shell > h1 {
+  color: var(--on-marquee);
+}
+.login-shell > .muted {
+  color: var(--on-marquee-secondary);
 }
 .login-card {
   position: relative;
@@ -819,6 +849,13 @@ label {
   display: flex;
   gap: 14px;
   padding: 0 14px;
+}
+/* Fills the nearest positioned ancestor instead of the viewport. For the landing
+   hero, which is the first screen of a page that keeps scrolling: pinned, the
+   lanes would go on animating under three opaque feature panels for the rest of
+   the page. */
+.marquee-contained {
+  position: absolute;
 }
 .marquee-lane {
   flex: 1;

@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useSession } from "@/components/SessionProvider";
+import { CardMarqueeBackground } from "@/components/CardMarqueeBackground";
 
 // Anonymous visitors get the marketing landing; a signed-in user goes to /cubes,
 // the hub they picked a cube from before anything cube-scoped rendered.
@@ -24,6 +25,9 @@ export default function Home() {
   return (
     <main className="landing">
       <section className="landing-hero">
+        {/* Contained, not viewport-pinned: the hero is one panel of a four-panel
+            scroll, and the feature panels below have their own opaque backgrounds. */}
+        <CardMarqueeBackground contained />
         <div className="landing-hero-inner">
           <h1 className="landing-title">
             🎴 Meta Tracker

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiGet } from "@/lib/api";
 
-// Five vertical lanes drift the pool of card images behind the login form.
+// Five vertical lanes drift the pool of card images behind the page's content.
 // Each lane gets an independent shuffle of the sampled pool, so the columns
 // are visually unrelated. Two identical strips per lane, with translateY(-50%)
 // between them — see the CSS for why that is exactly one strip's height and
@@ -25,12 +25,21 @@ interface SampleResponse {
   card_ids: string[];
 }
 
-// Card art the login page drifts behind the form. The images are cached
+interface CardMarqueeBackgroundProps {
+  // Pin to the viewport (the login screen, which is one screen tall) or fill the
+  // nearest positioned ancestor (the landing hero, which is one panel of a page
+  // that scrolls for several more). Containing it means the drift stops existing
+  // once the hero is scrolled past, instead of animating unseen behind the
+  // opaque feature panels for the rest of the page.
+  contained?: boolean;
+}
+
+// Card art drifting behind an anonymous page's content. The images are cached
 // full-card pngs for a random sample of the card catalog, fetched from a
-// dedicated public endpoint so the anonymous login screen never needs to
+// dedicated public endpoint so a signed-out visitor never needs to
 // authenticate. The background degrades silently: an empty response or a
-// failed fetch leaves the tinted overlay and the form still works.
-export function CardMarqueeBackground() {
+// failed fetch leaves the tinted overlay and the page still works.
+export function CardMarqueeBackground({ contained = false }: CardMarqueeBackgroundProps) {
   const [cards, setCards] = useState<{ card_id: string }[]>([]);
 
   useEffect(() => {
@@ -51,7 +60,7 @@ export function CardMarqueeBackground() {
 
   // Shuffle independently per lane so the columns read as unrelated. The
   // seed folds in the lane index, so a rerender of the same pool produces
-  // the same layout (no shuffle churn on state changes elsewhere in login).
+  // the same layout (no shuffle churn on state changes elsewhere on the page).
   const lanes = useMemo(() => {
     if (cards.length === 0) return Array.from({ length: LANES }, () => [] as { card_id: string }[]);
     return Array.from({ length: LANES }, (_, i) => shuffle(cards, cards.length * 31 + i));
@@ -70,7 +79,7 @@ export function CardMarqueeBackground() {
   );
 
   return (
-    <div className="marquee" aria-hidden>
+    <div className={`marquee${contained ? " marquee-contained" : ""}`} aria-hidden>
       {lanes.map((laneCards, i) => (
         <div
           key={i}
