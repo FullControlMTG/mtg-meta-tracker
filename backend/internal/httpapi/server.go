@@ -91,11 +91,30 @@ func (s *Server) Router() http.Handler {
 			r.Patch("/users/{id}", s.handlePatchUser)
 			r.Post("/users/{id}/password", s.handleSetPassword)
 
-			// Cubes
+			// Cubes — any signed-in user may create one and becomes its owner.
+			// Ownership actions (edit, sync, combos, invites) are gated
+			// owner-or-admin inside the handlers, not by tier.
 			r.Get("/cubes", s.handleListCubes)
+			r.Post("/cubes", s.handleCreateCube)
 			r.Get("/cubes/{id}", s.handleGetCube)
+			r.Patch("/cubes/{id}", s.handlePatchCube)
+			r.Delete("/cubes/{id}", s.handleDeleteCube)
 			r.Get("/cubes/{id}/cards", s.handleGetCubeCards)
+			r.Post("/cubes/{id}/sync", s.handleSyncCube)
+			r.Get("/cubes/{id}/sync-status", s.handleCubeSyncStatus)
 			r.Get("/cubes/{id}/combos", s.handleListCombos)
+			r.Post("/cubes/{id}/combos", s.handleCreateCombo)
+			r.Patch("/combos/{id}", s.handlePatchCombo)
+			r.Delete("/combos/{id}", s.handleDeleteCombo)
+
+			// Membership + invites.
+			r.Get("/cubes/{id}/members", s.handleListCubeMembers)
+			r.Delete("/cubes/{id}/members/{userId}", s.handleRemoveCubeMember)
+			r.Get("/cubes/{id}/invites", s.handleListCubeInvites)
+			r.Post("/cubes/{id}/invites", s.handleInviteToCube)
+			r.Get("/me/invites", s.handleMyInvites)
+			r.Post("/invites/{id}/accept", s.handleAcceptInvite)
+			r.Post("/invites/{id}/decline", s.handleDeclineInvite)
 
 			// Per-card detail is cube-scoped: it names the decks that play
 			// the card, which is playgroup data even though the card itself
@@ -123,19 +142,10 @@ func (s *Server) Router() http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireAdmin)
 
+			// Site administration: user management and a manual analytics rebuild.
+			// Cube management moved to the authenticated tier (owner-gated).
 			r.Delete("/users/{id}", s.handleDeleteUser)
 			r.Post("/admin/users", s.handleCreateUser)
-
-			r.Post("/admin/cubes", s.handleCreateCube)
-			r.Patch("/admin/cubes/{id}", s.handlePatchCube)
-			r.Delete("/admin/cubes/{id}", s.handleDeleteCube)
-			r.Post("/admin/cubes/{id}/sync", s.handleSyncCube)
-			r.Get("/admin/cubes/{id}/sync-status", s.handleCubeSyncStatus)
-
-			r.Post("/admin/cubes/{id}/combos", s.handleCreateCombo)
-			r.Patch("/admin/combos/{id}", s.handlePatchCombo)
-			r.Delete("/admin/combos/{id}", s.handleDeleteCombo)
-
 			r.Post("/admin/analytics/recompute", s.handleRecomputeAnalytics)
 		})
 	})
@@ -189,8 +199,12 @@ func decodeJSON(r *http.Request, dst any) error {
 }
 
 func statusForStoreErr(err error) int {
-	if errors.Is(err, store.ErrNotFound) {
+	switch {
+	case errors.Is(err, store.ErrNotFound):
 		return http.StatusNotFound
+	case errors.Is(err, store.ErrConflict):
+		return http.StatusConflict
+	default:
+		return http.StatusInternalServerError
 	}
-	return http.StatusInternalServerError
 }

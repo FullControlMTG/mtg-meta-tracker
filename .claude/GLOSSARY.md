@@ -72,6 +72,19 @@ which is a different question from its cast colors. A land groups by every color
 it relates to — what it taps for, the basic types it has or fetches — because the
 colors a land cares about are rarely in its cost.
 
+**Owner** — the user who created a cube (`cubes.owner_id`); administers it (edit list,
+sync, combos, invite, remove members). Distinct from a plain **member**.
+
+**Member** — a user in `cube_members` for a cube: who may *see* it (decks, analytics,
+cards). The read boundary. The owner is always also a member. Site admins bypass it.
+
+**Invite** — a `cube_invites` row inviting an existing user to join a cube. Owner/admin
+creates it (by username); the invitee accepts/declines from their dashboard. Accepting
+inserts the `cube_members` row. In-app only — there is no email.
+
+**Dashboard** — the logged-in root (`/`): the caller's cubes and pending invites. Has no
+cube tab bar (those tabs belong to a cube, at `/cube/[id]`).
+
 **Facet** — a slicing of `color_stats`. Four exist: `exact_identity` (the 0–31
 bitset), `single_color` (one color bit; decks *containing* it), `color_count`
 (0–5), and `splash_color` (one color bit; decks *splashing* it). Splashes appear

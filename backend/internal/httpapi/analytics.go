@@ -28,7 +28,7 @@ func (s *Server) currentRun(w http.ResponseWriter, r *http.Request, cubeID uuid.
 }
 
 func (s *Server) handleAnalyticsOverview(w http.ResponseWriter, r *http.Request) {
-	cubeID, ok := cubeParam(w, r)
+	cubeID, ok := s.cubeParamAccess(w, r)
 	if !ok {
 		return
 	}
@@ -46,7 +46,7 @@ func (s *Server) handleAnalyticsOverview(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleAnalyticsColors(w http.ResponseWriter, r *http.Request) {
-	cubeID, ok := cubeParam(w, r)
+	cubeID, ok := s.cubeParamAccess(w, r)
 	if !ok {
 		return
 	}
@@ -63,7 +63,7 @@ func (s *Server) handleAnalyticsColors(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAnalyticsColorTrend(w http.ResponseWriter, r *http.Request) {
-	cubeID, ok := cubeParam(w, r)
+	cubeID, ok := s.cubeParamAccess(w, r)
 	if !ok {
 		return
 	}
@@ -80,7 +80,7 @@ func (s *Server) handleAnalyticsColorTrend(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handleAnalyticsCards(w http.ResponseWriter, r *http.Request) {
-	cubeID, ok := cubeParam(w, r)
+	cubeID, ok := s.cubeParamAccess(w, r)
 	if !ok {
 		return
 	}
@@ -98,7 +98,7 @@ func (s *Server) handleAnalyticsCards(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAnalyticsPairs(w http.ResponseWriter, r *http.Request) {
-	cubeID, ok := cubeParam(w, r)
+	cubeID, ok := s.cubeParamAccess(w, r)
 	if !ok {
 		return
 	}

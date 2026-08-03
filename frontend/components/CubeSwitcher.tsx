@@ -1,9 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { cubePath } from "@/lib/cube";
 
-// Every cube's stats live at their own URL, so switching cubes is a navigation,
-// not local state — the selection stays in the address bar and is shareable.
+// Every cube lives at its own URL, so switching cubes is a navigation, not local
+// state — the selection stays in the address bar and is shareable.
 export function CubeSwitcher({
   cubes,
   current,
@@ -17,7 +18,7 @@ export function CubeSwitcher({
   return (
     <select
       value={current}
-      onChange={(e) => router.push(`/analytics/${e.target.value}`)}
+      onChange={(e) => router.push(cubePath(e.target.value))}
       aria-label="Cube"
       style={{ maxWidth: 260, width: "auto" }}
     >

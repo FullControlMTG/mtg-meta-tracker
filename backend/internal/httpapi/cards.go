@@ -57,7 +57,7 @@ func (s *Server) handleSampleCards(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetCard(w http.ResponseWriter, r *http.Request) {
-	cubeID, ok := cubeParam(w, r)
+	cubeID, ok := s.cubeParamAccess(w, r)
 	if !ok {
 		return
 	}

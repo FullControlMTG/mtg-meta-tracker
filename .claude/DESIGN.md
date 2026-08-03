@@ -115,7 +115,9 @@ colorless = 0.
 | `users` | accounts | `id, username, email, display_name, bio, avatar_url, role, password_hash (nullable)` |
 | `oauth_accounts` | Google links (table only — OAuth is unimplemented) | `user_id, provider, provider_account_id` |
 | `sessions` | server-side sessions, revocable | `id (token), user_id, expires_at` |
-| `cubes` | a card pool = one pasted list | `id, name, card_list (raw paste, source of truth), content_hash, moxfield_public_id (display only), last_synced_at` |
+| `cubes` | a card pool = one pasted list | `id, name, owner_id (fk users, SET NULL), card_list (raw paste, source of truth), content_hash, moxfield_public_id (display only), last_synced_at` |
+| `cube_members` | who may see a cube (the read boundary) | `cube_id, user_id, joined_at`, PK `(cube_id, user_id)`; owner is always a member |
+| `cube_invites` | pending/answered cube-join invites | `id, cube_id, invitee_id, invited_by, status (pending\|accepted\|declined), UNIQUE (cube_id, invitee_id)` |
 | `cards` | Scryfall cache | `scryfall_id (pk), oracle_id, name, slug (generated), cmc, type_line, colors, color_identity, rarity, image_*, raw jsonb` |
 | `cube_cards` | pool membership + history | `cube_id, card_id, quantity, added_at, removed_at (nullable), is_active` |
 | `cube_sync_progress` | live progress for the admin sync UI | `cube_id (pk), status, cards_total, images_total/done/failed, unresolved text[]` |
@@ -281,76 +283,87 @@ jobs worker ──▶ analytics recompute ──▶ new run promoted to is_curre
 
 ## API surface
 
-`backend/internal/httpapi/server.go` is the source of truth. Public:
+`backend/internal/httpapi/server.go` is the source of truth. Public (no session):
 
 ```
-GET  /api/health
-GET  /api/users                     GET /api/users/{username}
-GET  /api/cubes                     GET /api/cubes/{id}   GET /api/cubes/{id}/cards
-GET  /api/cubes/{id}/combos         (configured combos + their pieces)
-GET  /api/cards/{slug}              GET /api/cards/{id}/image   (self-hosted cache)
-GET  /api/decklists                 GET /api/decklists/{id}
-     (?cube= ?user= ; each item carries its owner and cube name for the
-      deck table's `user:` / `cube:` filters)
-GET  /api/analytics/overview|colors|color-trend|cards|pairs
-GET  /api/today                     (the server's date, in APP_TIMEZONE)
+GET  /api/health          GET /api/cards/{id}/image   (self-hosted cache)
+GET  /api/cards/sample    GET /api/today              (server date, in APP_TIMEZONE)
+POST /api/auth/login      POST /api/auth/logout        GET /api/auth/me
 ```
 
-Auth — login only; there is no register route and no public signup:
+Authenticated — cube reads are membership-gated, writes owner/role-gated, inside the
+handlers (see `httpapi/access.go`: `requireCubeAccess` / `requireCubeOwner`):
 
 ```
-POST /api/auth/login    POST /api/auth/logout    GET /api/auth/me
+GET    /api/users                  GET /api/users/{username}
+PATCH  /api/users/{id}             POST /api/users/{id}/password
+GET    /api/cubes                  (only the caller's cubes; admin sees all)
+POST   /api/cubes                  (any user; creator becomes owner + member)
+GET    /api/cubes/{id}             PATCH /api/cubes/{id}   DELETE /api/cubes/{id}   (owner/admin)
+GET    /api/cubes/{id}/cards       GET /api/cubes/{id}/combos
+POST   /api/cubes/{id}/sync        GET /api/cubes/{id}/sync-status                  (owner/admin)
+POST   /api/cubes/{id}/combos      PATCH /api/combos/{id}   DELETE /api/combos/{id} (owner/admin)
+GET    /api/cubes/{id}/members     DELETE /api/cubes/{id}/members/{userId}          (owner/admin)
+GET    /api/cubes/{id}/invites     POST /api/cubes/{id}/invites                     (owner/admin)
+GET    /api/me/invites             POST /api/invites/{id}/accept|decline           (invitee)
+GET    /api/cards/{slug}?cube=     (membership-gated)
+GET    /api/decklists?cube=[&user=]   GET /api/decklists/{id}   (cube required + gated)
+POST   /api/decklists              PATCH /api/decklists/{id}
+PATCH  /api/decklists/{id}/record  DELETE /api/decklists/{id}   POST /api/decklists/infer-colors
+GET    /api/analytics/overview|colors|color-trend|cards|pairs   (?cube= required + gated)
 ```
 
-Authenticated, with an ownership/role check inside the handler:
+Admin only (site administration): `DELETE /api/users/{id}`, `POST /api/admin/users`,
+`POST /api/admin/analytics/recompute`.
 
-```
-PATCH  /api/users/{id}              POST /api/users/{id}/password
-POST   /api/decklists               PATCH /api/decklists/{id}
-PATCH  /api/decklists/{id}/record   DELETE /api/decklists/{id}
-POST   /api/decklists/infer-colors
-```
-
-Admin only:
-
-```
-DELETE /api/users/{id}              POST /api/admin/users
-POST   /api/admin/cubes             PATCH /api/admin/cubes/{id}   DELETE /api/admin/cubes/{id}
-POST   /api/admin/cubes/{id}/sync   GET  /api/admin/cubes/{id}/sync-status
-POST   /api/admin/cubes/{id}/combos
-PATCH  /api/admin/combos/{id}       DELETE /api/admin/combos/{id}
-POST   /api/admin/analytics/recompute
-```
-
-Google OAuth is **not implemented**: the `GOOGLE_*` config and the
-`oauth_accounts` table exist, but no route does.
+Google OAuth is **not implemented**: the `GOOGLE_*` config and the `oauth_accounts`
+table exist, but no route does.
 
 ## Frontend pages
 
-Decks live under `/decks`; the old `/decklists` paths permanently redirect.
+The app is scoped to a cube: everything cube-specific lives under `/cube/[id]/…`, and
+the cube's tab bar (Overview / Cards / Decks / Manage) is on the cube *layout*
+(`app/cube/[id]/layout.tsx`), not the global nav. The layout fetches the cube, which
+404s a non-member — that fetch is the access gate.
 
-- `/` — redirects to the first cube's analytics. *(dynamic)*
-- `/analytics` + `/analytics/[cube]` — the dense view: color charts, the color
-  trend, a card table ranked by popularity, headline numbers from
-  `meta_snapshot`. Scoped to a cube. *(index dynamic; `[cube]` ISR 3600)*
-- `/decks` + `/decks/[id]` + `/decks/[id]/edit` — the index is the filterable deck
-  table, and takes a query in the URL (`?q=`, `?sort=`, `?dir=`); the detail page
-  renders the overlaid card fan, each card linking to its Scryfall printing, plus
-  record and card stats. *(index dynamic; detail ISR 3600)*
-- `/decks/new` — paste a list, live color inference, record entry.
-- `/cubes` + `/cubes/[id]` — the pool, same card-fan engine. *(index dynamic;
-  detail ISR 300)*
-- `/cards/[slug]` — printings, inclusion rate, most-played-with. *(ISR 300)*
-- `/users/[username]` — bio, that player's own stats (headline tiles, colors
-  played and splashed as radars, all 31 color combinations as a wheel grid, their
-  combinations ranked), then a dense deck list. The stats are computed in the
-  player's decklists, not from `meta_snapshot`: those are per-cube aggregates
-  over everybody, and a player plays across cubes. *(ISR 3600)*
-- `/login`, `/settings` (change password), `/admin/cubes` (paste and sync a cube,
-  with live progress and unresolved names), `/admin/combos` (name the card sets
-  that mark a sub-archetype), `/admin/users` (create users, reset passwords).
+- `/` — logged-in **dashboard**: the caller's cubes, pending invites (accept/decline),
+  and "new cube". Anonymous: the marketing landing. *(client)*
+- `/cube/[id]` — the cube **overview** (color charts, the color trend, card table,
+  headline `meta_snapshot` numbers). *(ISR 3600)*
+- `/cube/[id]/cards` + `/cube/[id]/cards/[slug]` — the pool (card-fan engine), and per-
+  card detail (inclusion, most-played-with, decks playing it). *(ISR 300)*
+- `/cube/[id]/decks` + `/decks/new` + `/decks/[deckId]` + `/decks/[deckId]/edit` — the
+  filterable deck table (`?q=/?sort=/?dir=`), create, detail (card fan + combos), edit.
+  The owner picker lists the cube's **members**. *(list dynamic; detail ISR 3600)*
+- `/cube/[id]/manage` — owner/admin only: cube settings + pool sync, members + invites,
+  combos. *(client)*
+- `/users/[username]?cube=` — the player's stats and decks **within one cube** (radars,
+  the 31-combination wheel, a deck list). Without `?cube=` it is just the profile.
+- `/login`, `/settings` (change password), `/admin/users` (site admin: create users,
+  reset passwords).
 
 ## Key decisions
+
+### The cube is the data boundary
+
+Every user is logged in (the app has no public read), but what they *see* is scoped
+to cube membership. `cubes.owner_id` is who administers a cube; `cube_members` is who
+may read it (owner included); site admins bypass both. A cube's decks, analytics,
+cards, and combos are all membership-gated — a non-member gets 404 (existence hidden),
+a member-non-owner gets 403 on owner actions. Gating is per-handler via
+`requireCubeAccess` / `requireCubeOwner` (`httpapi/access.go`), not middleware, because
+the cube id arrives variously in the path (`/cubes/{id}/…`) or a `?cube=` query.
+
+Any logged-in user can create a cube (creator = owner + first member); owners manage
+their own cube's list/sync/combos/members. The `admin` role is now only site
+administration (users, manual recompute). Invites are in-app (there is no email and no
+public signup, so the invitee already has an account): owner invites by username →
+`cube_invites` pending row → the invitee accepts on their dashboard, which enrolls them.
+
+Existing data was migrated in `schema.sql`'s idempotent backfill: cubes owned by the
+first admin, every existing user seeded into every existing cube (so no one lost
+access). The member-seed is guarded to run once per cube (`WHERE NOT EXISTS any
+member`), so an owner removing a member is not undone on the next boot.
 
 ### Analytics are precomputed, not queried live
 

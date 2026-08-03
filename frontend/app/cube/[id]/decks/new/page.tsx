@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  apiGet,
   apiGetOptional,
   apiPost,
   type CubeView,
@@ -13,26 +12,23 @@ import {
   type DecklistDetail,
   type Today,
 } from "@/lib/api";
+import { cubePath } from "@/lib/cube";
 import { ARCHETYPES } from "@/lib/decklist";
 import { ColorPips } from "@/components/ColorPips";
 
-export default function NewDeckPage() {
+export default function NewDeckPage({ params }: { params: { id: string } }) {
   const router = useRouter();
+  const cubeId = params.id;
   const [me, setMe] = useState<PublicUser | null | undefined>(undefined);
-  const [cubes, setCubes] = useState<CubeView[]>([]);
-  const [cubeId, setCubeId] = useState("");
-  // Owner. Admins may upload on someone else's behalf; everyone else is pinned
-  // to themselves, so the list stays empty and no picker renders.
-  const [users, setUsers] = useState<PublicUser[]>([]);
+  // The owner picker is offered only to the cube owner / an admin (mirrors the
+  // backend resolveOwner); it lists the cube's members, never all users.
+  const [members, setMembers] = useState<PublicUser[]>([]);
+  const [canAssign, setCanAssign] = useState(false);
   const [userId, setUserId] = useState("");
   const [name, setName] = useState("");
   const [archetype, setArchetype] = useState("");
-  // The day it was played. Seeded from the server (GET /today) rather than from this
-  // browser: the deck belongs to a playgroup in one timezone, and the backend defaults
-  // the field to that timezone's today if this arrives empty.
   const [playedAt, setPlayedAt] = useState("");
   const [raw, setRaw] = useState("");
-  // Optional record, if the deck has already been played.
   const [wins, setWins] = useState("");
   const [losses, setLosses] = useState("");
   const [infer, setInfer] = useState<InferResult | null>(null);
@@ -42,25 +38,21 @@ export default function NewDeckPage() {
 
   useEffect(() => {
     apiGetOptional<Today>("/today").then((t) => t && setPlayedAt(t.date));
-    apiGetOptional<PublicUser>("/auth/me").then((u) => {
+    Promise.all([
+      apiGetOptional<PublicUser>("/auth/me"),
+      apiGetOptional<CubeView>(`/cubes/${cubeId}`),
+      apiGetOptional<PublicUser[]>(`/cubes/${cubeId}/members`),
+    ]).then(([u, view, ms]) => {
       setMe(u);
-      if (!u) return;
-      setUserId(u.id);
-      if (u.role === "admin") {
-        apiGetOptional<PublicUser[]>("/users").then((us) => setUsers(us ?? []));
-      }
+      if (u) setUserId(u.id);
+      setMembers(ms ?? []);
+      if (u && (u.role === "admin" || u.id === view?.cube.owner_id)) setCanAssign(true);
     });
-    apiGet<CubeView[]>("/cubes")
-      .then((cs) => {
-        setCubes(cs);
-        if (cs[0]) setCubeId(cs[0].cube.id);
-      })
-      .catch(() => setCubes([]));
-  }, []);
+  }, [cubeId]);
 
   // Debounced live color inference as the list is typed.
   useEffect(() => {
-    if (!cubeId || raw.trim() === "") {
+    if (raw.trim() === "") {
       setInfer(null);
       return;
     }
@@ -83,12 +75,9 @@ export default function NewDeckPage() {
         name,
         archetype,
         decklist_raw: raw,
-        // Blank only if /today has not answered yet, in which case the backend fills
-        // in the same date this input would have shown.
         played_at: playedAt,
       };
-      // Only admins may name an owner; the backend defaults it to the caller.
-      if (me?.role === "admin" && userId) body.user_id = userId;
+      if (canAssign && userId) body.user_id = userId;
       const w = parseInt(wins, 10) || 0;
       const l = parseInt(losses, 10) || 0;
       if (w || l) {
@@ -96,43 +85,31 @@ export default function NewDeckPage() {
         body.losses = l;
       }
       const detail = await apiPost<DecklistDetail>("/decklists", body);
-      router.push(`/decks/${detail.decklist.id}`);
+      router.push(cubePath(cubeId, `/decks/${detail.decklist.id}`));
     } catch (e) {
       setErr(String(e instanceof Error ? e.message : e));
       setBusy(false);
     }
   }
 
-  if (me === undefined) return <main className="container">Loading…</main>;
+  if (me === undefined) return <p style={{ marginTop: "1rem" }}>Loading…</p>;
   if (me === null) {
     return (
-      <main className="container">
-        <h1>New deck</h1>
-        <p>
-          You need to <Link href="/login">sign in</Link> to upload a deck.
-        </p>
-      </main>
+      <p style={{ marginTop: "1rem" }}>
+        You need to <Link href="/login">sign in</Link> to upload a deck.
+      </p>
     );
   }
 
   return (
-    <main className="container" style={{ maxWidth: 760 }}>
-      <h1>New deck</h1>
+    <div style={{ maxWidth: 760, marginTop: "1rem" }}>
+      <h2 style={{ marginTop: 0 }}>New deck</h2>
       <form onSubmit={submit} className="card">
-        <label htmlFor="cube">Cube</label>
-        <select id="cube" value={cubeId} onChange={(e) => setCubeId(e.target.value)} required>
-          {cubes.map((c) => (
-            <option key={c.cube.id} value={c.cube.id}>
-              {c.cube.name}
-            </option>
-          ))}
-        </select>
-
-        {me.role === "admin" && (
+        {canAssign && (
           <>
             <label htmlFor="owner">Owner</label>
             <select id="owner" value={userId} onChange={(e) => setUserId(e.target.value)} required>
-              {users.map((u) => (
+              {members.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.display_name} (@{u.username})
                 </option>
@@ -155,13 +132,7 @@ export default function NewDeckPage() {
         </select>
 
         <label htmlFor="played">Date played</label>
-        <input
-          id="played"
-          type="date"
-          value={playedAt}
-          onChange={(e) => setPlayedAt(e.target.value)}
-          required
-        />
+        <input id="played" type="date" value={playedAt} onChange={(e) => setPlayedAt(e.target.value)} required />
 
         <label htmlFor="list">Decklist</label>
         <textarea
@@ -179,15 +150,16 @@ export default function NewDeckPage() {
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <ColorPips bits={infer.color_identity} splash={infer.splash_colors} showCode />
               <span className="muted">
-                {(infer.resolved?.length ?? 0)} resolved
+                {infer.resolved?.length ?? 0} resolved
                 {infer.unresolved && infer.unresolved.length > 0 && (
-                  <> · {infer.unresolved.length} unresolved: {infer.unresolved.slice(0, 5).join(", ")}
-                    {infer.unresolved.length > 5 ? "…" : ""}</>
+                  <>
+                    {" "}
+                    · {infer.unresolved.length} unresolved: {infer.unresolved.slice(0, 5).join(", ")}
+                    {infer.unresolved.length > 5 ? "…" : ""}
+                  </>
                 )}
               </span>
             </div>
-            {/* The combos this list already assembles. The deck page shows them with
-                card previews; here it is only confirmation as the list is typed. */}
             {infer.combos?.length > 0 && (
               <p className="muted" style={{ margin: "0.5rem 0 0", fontSize: "0.85rem" }}>
                 Combos: {infer.combos.map((c) => c.name).join(", ")}
@@ -199,11 +171,15 @@ export default function NewDeckPage() {
         <label style={{ marginTop: "1rem" }}>Record (optional — if already played)</label>
         <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
           <div>
-            <span className="muted" style={{ fontSize: "0.8rem" }}>Wins</span>
+            <span className="muted" style={{ fontSize: "0.8rem" }}>
+              Wins
+            </span>
             <input type="number" min={0} value={wins} onChange={(e) => setWins(e.target.value)} style={{ width: 90 }} />
           </div>
           <div>
-            <span className="muted" style={{ fontSize: "0.8rem" }}>Losses</span>
+            <span className="muted" style={{ fontSize: "0.8rem" }}>
+              Losses
+            </span>
             <input type="number" min={0} value={losses} onChange={(e) => setLosses(e.target.value)} style={{ width: 90 }} />
           </div>
         </div>
@@ -215,8 +191,9 @@ export default function NewDeckPage() {
         </button>
       </form>
       <p className="muted" style={{ marginTop: "1rem", fontSize: "0.85rem" }}>
-        Leave the record blank if you haven&apos;t played yet — you can add it later from the deck page.
+        Leave the record blank if you haven&apos;t played yet — you can add it later from the deck
+        page.
       </p>
-    </main>
+    </div>
   );
 }

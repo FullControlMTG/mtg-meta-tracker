@@ -71,6 +71,7 @@ function parseSort(key?: string, dir?: string): Sort | null {
 
 export function DeckTable({
   decks,
+  cubeId,
   showArchetype = false,
   heading,
   actions,
@@ -81,6 +82,9 @@ export function DeckTable({
   emptyMessage = "No decklists yet.",
 }: {
   decks: DecklistListItem[];
+  // Deck links hang off this cube. A profile page listing one user's decks in a
+  // single cube passes that cube's id.
+  cubeId: string;
   showArchetype?: boolean;
   // The page's own title and buttons, hosted in the table's toolbar so the Filter
   // button costs no vertical space of its own — it joins a row that already exists.
@@ -196,7 +200,7 @@ export function DeckTable({
               {rows.map(({ decklist: d }) => (
                 <tr key={d.id}>
                   <td>
-                    <Link href={`/decks/${d.id}`}>{d.name}</Link>
+                    <Link href={`/cube/${cubeId}/decks/${d.id}`}>{d.name}</Link>
                     {showArchetype && d.archetype && (
                       <span className="muted" style={{ marginLeft: 6, fontSize: "0.85rem" }}>
                         {d.archetype}

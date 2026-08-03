@@ -71,6 +71,7 @@ type Session struct {
 type Cube struct {
 	ID               uuid.UUID  `json:"id"`
 	Name             string     `json:"name"`
+	OwnerID          *uuid.UUID `json:"owner_id,omitempty"` // null only for orphaned cubes (owner deleted)
 	MoxfieldPublicID *string    `json:"moxfield_public_id,omitempty"`
 	Description      *string    `json:"description,omitempty"`
 	CardList         *string    `json:"card_list,omitempty"` // raw pasted decklist; source of truth for the pool

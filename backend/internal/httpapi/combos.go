@@ -80,9 +80,10 @@ func (s *Server) revalidateCubeDecks(r *http.Request, cubeID uuid.UUID) {
 	if err != nil || len(ids) == 0 {
 		return
 	}
+	cube := "/cube/" + cubeID.String()
 	paths := make([]string, 0, len(ids))
 	for _, id := range ids {
-		paths = append(paths, "/decks/"+id.String())
+		paths = append(paths, cube+"/decks/"+id.String())
 	}
 	s.revalidatePaths(paths)
 }
@@ -91,6 +92,9 @@ func (s *Server) handleListCombos(w http.ResponseWriter, r *http.Request) {
 	cubeID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid cube id")
+		return
+	}
+	if !s.requireCubeAccess(w, r, cubeID) {
 		return
 	}
 	combos, err := s.store.ListCombos(r.Context(), cubeID)
@@ -105,6 +109,9 @@ func (s *Server) handleCreateCombo(w http.ResponseWriter, r *http.Request) {
 	cubeID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid cube id")
+		return
+	}
+	if !s.requireCubeOwner(w, r, cubeID) {
 		return
 	}
 	if _, err := s.store.GetCube(r.Context(), cubeID); err != nil {
@@ -146,6 +153,9 @@ func (s *Server) handlePatchCombo(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, statusForStoreErr(err), "combo not found")
 		return
 	}
+	if !s.requireCubeOwner(w, r, existing.CubeID) {
+		return
+	}
 	var req comboRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid body")
@@ -178,6 +188,9 @@ func (s *Server) handleDeleteCombo(w http.ResponseWriter, r *http.Request) {
 	existing, err := s.store.GetCombo(r.Context(), id)
 	if err != nil {
 		writeErr(w, statusForStoreErr(err), "combo not found")
+		return
+	}
+	if !s.requireCubeOwner(w, r, existing.CubeID) {
 		return
 	}
 	if err := s.store.DeleteCombo(r.Context(), id); err != nil {

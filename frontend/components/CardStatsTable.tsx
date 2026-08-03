@@ -119,7 +119,7 @@ export function CardStatsTable({ cards, cubeId }: { cards: CardStat[]; cubeId: s
               <tr key={c.card_id} className="stat-row" {...rowHover(c)}>
                 <td>
                   <Link
-                    href={`/cards/${c.slug}?cube=${cubeId}`}
+                    href={`/cube/${cubeId}/cards/${c.slug}`}
                     style={{
                       display: "inline-flex",
                       alignItems: "center",

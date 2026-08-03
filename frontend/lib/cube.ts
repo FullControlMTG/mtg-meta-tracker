@@ -1,7 +1,6 @@
 import { apiGet, type CubeView } from "@/lib/api";
 
-// Cubes are stable; longer revalidate is fine. Pages that render per request pass
-// 0 to opt out of caching entirely — see apiGet.
+// The cubes the caller belongs to (the backend scopes /cubes to membership).
 export async function getCubes(revalidate = 300): Promise<CubeView[]> {
   try {
     return await apiGet<CubeView[]>("/cubes", revalidate);
@@ -11,8 +10,8 @@ export async function getCubes(revalidate = 300): Promise<CubeView[]> {
   }
 }
 
-// The playgroup runs a small number of cubes; default to the first.
-export async function getDefaultCube(revalidate = 300): Promise<CubeView | null> {
-  const cubes = await getCubes(revalidate);
-  return cubes[0] ?? null;
+// Every cube-scoped path hangs off /cube/<id>; build them here so the prefix lives in
+// one place. sub is "", "/cards", "/decks/new", etc.
+export function cubePath(cubeId: string, sub = ""): string {
+  return `/cube/${cubeId}${sub}`;
 }

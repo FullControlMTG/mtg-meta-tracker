@@ -75,12 +75,23 @@ function combos(decks: Decklist[]): Combo[] {
   return [...by.values()].sort((a, b) => b.decks - a.decks || b.games - a.games);
 }
 
-export default async function UserPage({ params }: { params: { username: string } }) {
+// A player's decks are cube-scoped now, so the profile shows them within one cube —
+// the ?cube= it was linked from (a deck's "by X", a cube's member list). Without a cube
+// the page is just the profile header; there is no cross-cube deck view.
+export default async function UserPage({
+  params,
+  searchParams,
+}: {
+  params: { username: string };
+  searchParams: { cube?: string };
+}) {
   const user = await apiGetOptional<PublicUser>(`/users/${params.username}`, 3600);
   if (!user) notFound();
 
-  const items =
-    (await apiGetOptional<DecklistListItem[]>(`/decklists?user=${user.id}`, 3600)) ?? [];
+  const cubeId = searchParams.cube;
+  const items = cubeId
+    ? (await apiGetOptional<DecklistListItem[]>(`/decklists?cube=${cubeId}&user=${user.id}`, 3600)) ?? []
+    : [];
   const decks = items.map((i) => i.decklist);
 
   const games = decks.reduce((n, d) => n + d.games_played, 0);
@@ -107,9 +118,13 @@ export default async function UserPage({ params }: { params: { username: string 
       </p>
       {user.bio && <p>{user.bio}</p>}
 
-      {decks.length === 0 ? (
+      {!cubeId ? (
         <p className="muted" style={{ marginTop: "1.5rem" }}>
-          No decklists yet.
+          Open a player from inside a cube to see the decks they play there.
+        </p>
+      ) : decks.length === 0 ? (
+        <p className="muted" style={{ marginTop: "1.5rem" }}>
+          No decklists in this cube yet.
         </p>
       ) : (
         <>
@@ -131,6 +146,7 @@ export default async function UserPage({ params }: { params: { username: string 
               value={String(undefeated)}
               label="Undefeated decks"
               href={deckListHref(
+                cubeId,
                 [`user:${quoteTerm(user.username)}`, ...UNDEFEATED_TERMS],
                 { key: "record", dir: "desc" },
               )}
@@ -220,7 +236,11 @@ export default async function UserPage({ params }: { params: { username: string 
           </div>
 
           {/* No syncUrl: this page's address is the player, not a deck query. */}
-          <DeckTable decks={items} heading={<h2 style={{ marginTop: "1.5rem" }}>Decklists</h2>} />
+          <DeckTable
+            decks={items}
+            cubeId={cubeId}
+            heading={<h2 style={{ marginTop: "1.5rem" }}>Decklists</h2>}
+          />
         </>
       )}
     </main>

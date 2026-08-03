@@ -45,11 +45,11 @@ func (s *Server) decklistView(r *http.Request, d *domain.Decklist) map[string]an
 	return view
 }
 
-// resolveOwner interprets a user_id sent with a deck save. An empty value means
-// "leave it alone" and yields current. Anyone may own their own decks; only an
-// admin may hand a deck to someone else. The target must exist — decklists.user_id
-// is a FK, so a bad id would otherwise surface as a 500.
-func (s *Server) resolveOwner(r *http.Request, requested string, current uuid.UUID) (uuid.UUID, error) {
+// resolveOwner interprets the owner sent with a deck save, scoped to the deck's cube.
+// Empty keeps `current`. Assigning the deck to someone else is a cube-owner/admin
+// action, and the target must be a member of the cube — the picker only ever offers
+// members, and this is the server-side guarantee behind it.
+func (s *Server) resolveOwner(r *http.Request, cubeID uuid.UUID, requested string, current uuid.UUID) (uuid.UUID, error) {
 	requested = strings.TrimSpace(requested)
 	if requested == "" {
 		return current, nil
@@ -61,11 +61,22 @@ func (s *Server) resolveOwner(r *http.Request, requested string, current uuid.UU
 	if id == current {
 		return current, nil
 	}
-	if !appctx.From(r.Context()).IsAdmin() {
-		return uuid.Nil, apiError{http.StatusForbidden, "only admins may set the deck owner"}
+	caller := appctx.From(r.Context())
+	mayAssign := caller.IsAdmin()
+	if !mayAssign {
+		if owner, err := s.store.IsCubeOwner(r.Context(), cubeID, caller.UserID); err == nil {
+			mayAssign = owner
+		}
 	}
-	if _, err := s.store.GetUserByID(r.Context(), id); err != nil {
-		return uuid.Nil, apiError{http.StatusBadRequest, "unknown user"}
+	if !mayAssign {
+		return uuid.Nil, apiError{http.StatusForbidden, "only the cube owner or an admin may set the deck owner"}
+	}
+	member, err := s.store.IsCubeMember(r.Context(), cubeID, id)
+	if err != nil {
+		return uuid.Nil, apiError{http.StatusInternalServerError, "could not check membership"}
+	}
+	if !member {
+		return uuid.Nil, apiError{http.StatusBadRequest, "user is not a member of this cube"}
 	}
 	return id, nil
 }
@@ -100,16 +111,14 @@ func withUnresolved(view map[string]any, unresolved []string) map[string]any {
 	return view
 }
 
+// handleListDecklists lists a cube's decks. The cube is required and membership-gated:
+// deck lists are per-cube now, never a cross-cube view.
 func (s *Server) handleListDecklists(w http.ResponseWriter, r *http.Request) {
-	var f store.DecklistFilter
-	if v := r.URL.Query().Get("cube"); v != "" {
-		id, err := uuid.Parse(v)
-		if err != nil {
-			writeErr(w, http.StatusBadRequest, "invalid cube id")
-			return
-		}
-		f.CubeID = &id
+	cubeID, ok := s.cubeParamAccess(w, r)
+	if !ok {
+		return
 	}
+	f := store.DecklistFilter{CubeID: &cubeID}
 	if v := r.URL.Query().Get("user"); v != "" {
 		id, err := uuid.Parse(v)
 		if err != nil {
@@ -123,21 +132,17 @@ func (s *Server) handleListDecklists(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "could not list decklists")
 		return
 	}
-	// Owner and cube travel with the list so the deck table can filter on them
-	// (frontend lib/deckQuery.ts) — a `user:` or `cube:` term has nothing to match
-	// against a bare user_id. Both are read whole rather than joined per deck: a
-	// playgroup has a handful of each, and neither list is worth an N+1.
+	// Owner and cube name travel with each deck so the table can filter on them
+	// (lib/deckQuery.ts); users come from this cube's members, read once.
 	users := map[uuid.UUID]map[string]any{}
-	if list, err := s.store.ListUsers(r.Context()); err == nil {
+	if list, err := s.store.ListCubeMembers(r.Context(), cubeID); err == nil {
 		for _, u := range list {
 			users[u.ID] = u.Public()
 		}
 	}
-	cubes := map[uuid.UUID]string{}
-	if list, err := s.store.ListCubes(r.Context()); err == nil {
-		for _, c := range list {
-			cubes[c.ID] = c.Name
-		}
+	var cubeName string
+	if c, err := s.store.GetCube(r.Context(), cubeID); err == nil {
+		cubeName = c.Name
 	}
 	out := make([]map[string]any, len(decks))
 	for i := range decks {
@@ -145,12 +150,10 @@ func (s *Server) handleListDecklists(w http.ResponseWriter, r *http.Request) {
 			"decklist":      decks[i],
 			"color_string":  domain.ColorIdentity(decks[i].ColorIdentity).String(),
 			"splash_string": domain.ColorIdentity(decks[i].SplashColors).String(),
+			"cube_name":     cubeName,
 		}
 		if u, ok := users[decks[i].UserID]; ok {
 			item["user"] = u
-		}
-		if name, ok := cubes[decks[i].CubeID]; ok {
-			item["cube_name"] = name
 		}
 		out[i] = item
 	}
@@ -166,6 +169,9 @@ func (s *Server) handleGetDecklist(w http.ResponseWriter, r *http.Request) {
 	d, err := s.store.GetDecklist(r.Context(), id)
 	if err != nil {
 		writeErr(w, statusForStoreErr(err), "decklist not found")
+		return
+	}
+	if !s.requireCubeAccess(w, r, d.CubeID) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.decklistView(r, d))
@@ -199,6 +205,9 @@ func (s *Server) handleCreateDecklist(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid cube id")
 		return
 	}
+	if !s.requireCubeAccess(w, r, cubeID) {
+		return
+	}
 	req.Name = strings.TrimSpace(req.Name)
 	if req.Name == "" {
 		writeErr(w, http.StatusBadRequest, "name required")
@@ -229,7 +238,7 @@ func (s *Server) handleCreateDecklist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	caller := appctx.From(r.Context())
-	ownerID, err := s.resolveOwner(r, req.UserID, caller.UserID)
+	ownerID, err := s.resolveOwner(r, cubeID, req.UserID, caller.UserID)
 	if err != nil {
 		writeAPIErr(w, err)
 		return
@@ -317,7 +326,7 @@ func (s *Server) handlePatchDecklist(w http.ResponseWriter, r *http.Request) {
 	}
 	prevOwner := d.UserID
 	if req.UserID != nil {
-		owner, err := s.resolveOwner(r, *req.UserID, d.UserID)
+		owner, err := s.resolveOwner(r, d.CubeID, *req.UserID, d.UserID)
 		if err != nil {
 			writeAPIErr(w, err)
 			return
@@ -455,7 +464,7 @@ func (s *Server) handleDeleteDecklist(w http.ResponseWriter, r *http.Request) {
 	// The recompute's own revalidation derives its paths from the cube's decklists,
 	// which no longer include this one, so the deck's page and its owner's profile
 	// (both ISR, revalidate = 3600) would keep serving the deleted deck for an hour.
-	paths := []string{"/decks/" + id.String()}
+	paths := []string{"/cube/" + d.CubeID.String() + "/decks/" + id.String()}
 	if u, err := s.store.GetUserByID(r.Context(), d.UserID); err == nil {
 		paths = append(paths, "/users/"+u.Username)
 	}

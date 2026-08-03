@@ -157,6 +157,32 @@ h3 {
   gap: 1rem;
 }
 
+/* The cube-scoped tab bar (Overview / Cards / Decks / Manage), on the cube layout
+   rather than the global nav. Scrolls sideways before wrapping, like the old nav row. */
+.cube-tabs {
+  display: flex;
+  gap: 1.25rem;
+  margin: 0.75rem 0 0.25rem;
+  border-bottom: 1px solid var(--grid);
+  white-space: nowrap;
+  overflow-x: auto;
+}
+.cube-tab {
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 0.4rem 0.1rem;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.cube-tab:hover {
+  color: var(--text);
+}
+.cube-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
 /* The one pair of breakpoint switches: .nav-wide is the desktop wording, .nav-narrow its
    mobile stand-in. Exactly one of them is ever in the layout. */
 .nav-narrow {

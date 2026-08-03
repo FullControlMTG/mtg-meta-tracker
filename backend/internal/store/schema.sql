@@ -56,6 +56,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE TABLE IF NOT EXISTS cubes (
     id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name             text NOT NULL,
+    owner_id         uuid REFERENCES users(id) ON DELETE SET NULL,  -- administers; see cube_members for who can view
     moxfield_public_id text UNIQUE,   -- kept as display-only metadata (link back to the source deck)
     description      text,
     card_list        text,            -- raw pasted decklist (standard format); source of truth for the pool
@@ -419,3 +420,46 @@ UPDATE decklists SET played_at = created_at::date WHERE played_at IS NULL;
 ALTER TABLE decklists ALTER COLUMN played_at SET DEFAULT CURRENT_DATE;
 ALTER TABLE decklists ALTER COLUMN played_at SET NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_decklists_played_at ON decklists(played_at DESC);
+
+-- Cubes are owned by their creator and scoped to an explicit member list: owner_id
+-- administers, cube_members is the read boundary (owner included). ON DELETE SET NULL
+-- rather than RESTRICT so deleting a user never blocks on cube ownership; an orphaned
+-- cube falls to the site admins.
+ALTER TABLE cubes ADD COLUMN IF NOT EXISTS owner_id uuid REFERENCES users(id) ON DELETE SET NULL;
+
+CREATE TABLE IF NOT EXISTS cube_members (
+    cube_id   uuid NOT NULL REFERENCES cubes(id) ON DELETE CASCADE,
+    user_id   uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    joined_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (cube_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_cube_members_user ON cube_members(user_id);
+
+-- A pending row is an outstanding invite; accepting inserts the cube_members row and
+-- flips status. UNIQUE(cube_id, invitee_id) keeps one row per pair — re-inviting a
+-- declined user resets that row to pending (store.CreateInvite upserts).
+CREATE TABLE IF NOT EXISTS cube_invites (
+    id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    cube_id      uuid NOT NULL REFERENCES cubes(id) ON DELETE CASCADE,
+    invitee_id   uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    invited_by   uuid REFERENCES users(id) ON DELETE SET NULL,
+    status       text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','declined')),
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    responded_at timestamptz,
+    UNIQUE (cube_id, invitee_id)
+);
+CREATE INDEX IF NOT EXISTS idx_cube_invites_pending ON cube_invites(invitee_id) WHERE status = 'pending';
+
+-- Backfill (this schema runs on every boot, so both statements must be no-ops once
+-- applied). owner_id only fills where still null — new cubes set their own owner, so a
+-- real owner is never clobbered, and an owner deleted later (SET NULL) is reclaimed by
+-- the first admin. Membership seeds only cubes with *no members yet*: on the first boot
+-- after this migration that is every existing cube (seeded with all users, so nobody
+-- loses prior access); forever after, every cube has at least its owner, so the
+-- CROSS JOIN is skipped and a member an owner removed stays removed.
+UPDATE cubes SET owner_id = (SELECT id FROM users WHERE role = 'admin' ORDER BY created_at LIMIT 1)
+    WHERE owner_id IS NULL;
+INSERT INTO cube_members (cube_id, user_id)
+    SELECT c.id, u.id FROM cubes c CROSS JOIN users u
+    WHERE NOT EXISTS (SELECT 1 FROM cube_members m WHERE m.cube_id = c.id)
+    ON CONFLICT DO NOTHING;

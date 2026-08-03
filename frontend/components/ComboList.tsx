@@ -8,11 +8,11 @@ import type { Combo } from "@/lib/api";
 const PIECE_W = 168;
 const PIECE_H = Math.round((PIECE_W * 88) / 63); // MTG card aspect ratio
 
-// The combos a deck assembles, each spelled out as its pieces. Named sets of
-// cards an admin configured per cube (see /admin/combos); the pieces are shown
-// rather than only listed because "Thassa's Oracle + Demonic Consultation" means
-// nothing to a reader who has not met the cards.
-export function ComboList({ combos }: { combos: Combo[] }) {
+// The combos a deck assembles, each spelled out as its pieces. Named sets of cards
+// the cube owner configured; the pieces are shown rather than only listed because
+// "Thassa's Oracle + Demonic Consultation" means nothing to a reader who has not met
+// the cards. cubeId scopes the piece links to this cube's card pages.
+export function ComboList({ combos, cubeId }: { combos: Combo[]; cubeId: string }) {
   if (combos.length === 0) return null;
 
   return (
@@ -51,7 +51,7 @@ export function ComboList({ combos }: { combos: Combo[] }) {
                     </span>
                   )}
                   <Link
-                    href={`/cards/${c.slug}`}
+                    href={`/cube/${cubeId}/cards/${c.slug}`}
                     title={c.card_name}
                     style={{ width: PIECE_W, maxWidth: "100%", display: "block" }}
                   >

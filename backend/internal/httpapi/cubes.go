@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/runyanjake/mtg-meta-tracker/backend/internal/appctx"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/moxfield"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/store"
@@ -36,8 +37,11 @@ func eqStrPtr(a, b *string) bool {
 	return *a == *b
 }
 
+// handleListCubes returns the caller's cubes — the ones they own or belong to (an
+// admin sees all). This is the dashboard's list.
 func (s *Server) handleListCubes(w http.ResponseWriter, r *http.Request) {
-	cubes, err := s.store.ListCubes(r.Context())
+	caller := appctx.From(r.Context())
+	cubes, err := s.store.ListCubesForUser(r.Context(), caller.UserID, caller.IsAdmin())
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "could not list cubes")
 		return
@@ -55,6 +59,9 @@ func (s *Server) handleGetCube(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid id")
 		return
 	}
+	if !s.requireCubeAccess(w, r, id) {
+		return
+	}
 	c, err := s.store.GetCube(r.Context(), id)
 	if err != nil {
 		writeErr(w, statusForStoreErr(err), "cube not found")
@@ -67,6 +74,9 @@ func (s *Server) handleGetCubeCards(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if !s.requireCubeAccess(w, r, id) {
 		return
 	}
 	if _, err := s.store.GetCube(r.Context(), id); err != nil {
@@ -139,7 +149,9 @@ func (s *Server) handleCreateCube(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "name required")
 		return
 	}
-	c := &domain.Cube{Name: req.Name}
+	// The creator owns the cube and is enrolled as its first member (in CreateCube).
+	owner := appctx.From(r.Context()).UserID
+	c := &domain.Cube{Name: req.Name, OwnerID: &owner}
 	if pid := moxfield.ParsePublicID(strings.TrimSpace(req.MoxfieldURL)); pid != "" {
 		c.MoxfieldPublicID = &pid
 	}
@@ -164,7 +176,7 @@ func (s *Server) handleCreateCube(w http.ResponseWriter, r *http.Request) {
 	// Bust the public cube listing so the new cube surfaces promptly rather than
 	// waiting out the ISR window. (A Moxfield-backed cube will also revalidate
 	// its own page once the sync's analytics recompute finishes.)
-	s.revalidatePaths([]string{"/", "/cubes"})
+	s.revalidatePaths([]string{"/"})
 	writeJSON(w, http.StatusCreated, s.cubeView(r, c))
 }
 
@@ -172,6 +184,9 @@ func (s *Server) handlePatchCube(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if !s.requireCubeOwner(w, r, id) {
 		return
 	}
 	c, err := s.store.GetCube(r.Context(), id)
@@ -232,7 +247,7 @@ func (s *Server) handlePatchCube(w http.ResponseWriter, r *http.Request) {
 	// Bust the public cube listing and this cube's page so edits surface promptly
 	// rather than waiting out the ISR window. (A list change also revalidates
 	// again once its sync's analytics recompute finishes.)
-	s.revalidatePaths([]string{"/", "/cubes", "/cubes/" + c.ID.String()})
+	s.revalidatePaths([]string{"/", "/cube/" + c.ID.String(), "/cube/" + c.ID.String() + "/cards"})
 	writeJSON(w, http.StatusOK, s.cubeView(r, c))
 }
 
@@ -240,6 +255,9 @@ func (s *Server) handleSyncCube(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if !s.requireCubeOwner(w, r, id) {
 		return
 	}
 	if _, err := s.store.GetCube(r.Context(), id); err != nil {
@@ -265,6 +283,9 @@ func (s *Server) handleCubeSyncStatus(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid id")
 		return
 	}
+	if !s.requireCubeOwner(w, r, id) {
+		return
+	}
 	p, err := s.store.GetCubeSyncProgress(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
@@ -283,10 +304,13 @@ func (s *Server) handleDeleteCube(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid id")
 		return
 	}
+	if !s.requireCubeOwner(w, r, id) {
+		return
+	}
 	if err := s.store.DeleteCube(r.Context(), id); err != nil {
 		writeErr(w, statusForStoreErr(err), "could not delete cube")
 		return
 	}
-	s.revalidatePaths([]string{"/", "/cubes", "/cubes/" + id.String()})
+	s.revalidatePaths([]string{"/", "/cube/" + id.String()})
 	w.WriteHeader(http.StatusNoContent)
 }

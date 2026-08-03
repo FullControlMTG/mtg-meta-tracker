@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { apiGetOptional, type CardDetail } from "@/lib/api";
-import { getDefaultCube } from "@/lib/cube";
+import { cubePath } from "@/lib/cube";
 import { ColorPips } from "@/components/ColorPips";
 import { ColorWinrateChart } from "@/components/ColorWinrateChart";
 import { InfoHint } from "@/components/InfoHint";
@@ -24,31 +24,17 @@ function colorCountAxes(stats: CardDetail["color_count_split"]): RadarAxis[] {
   }));
 }
 
-export default async function CardPage({
-  params,
-  searchParams,
-}: {
-  params: { slug: string };
-  searchParams: { cube?: string };
-}) {
-  // Card stats only mean anything within a cube, so scope to one — the requested
-  // cube, or the default.
-  const cubeId = searchParams.cube ?? (await getDefaultCube())?.cube.id;
-  if (!cubeId) notFound();
-
-  const detail = await apiGetOptional<CardDetail>(
-    `/cards/${params.slug}?cube=${cubeId}`,
-    300
-  );
+export default async function CardPage({ params }: { params: { id: string; slug: string } }) {
+  const cubeId = params.id;
+  const detail = await apiGetOptional<CardDetail>(`/cards/${params.slug}?cube=${cubeId}`, 300);
   if (!detail) notFound();
 
   const { card, stat, decks, pairs, in_pool } = detail;
-  const analytics = `/analytics/${cubeId}`;
 
   return (
-    <main className="container">
+    <div style={{ marginTop: "1rem" }}>
       <p className="muted" style={{ marginBottom: "0.75rem" }}>
-        <Link href={analytics}>← Cube stats</Link>
+        <Link href={cubePath(cubeId, "/cards")}>← Cards</Link>
       </p>
 
       <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", alignItems: "flex-start" }}>
@@ -100,29 +86,20 @@ export default async function CardPage({
         <>
           <div
             className="grid"
-            style={{
-              marginTop: "1.5rem",
-              gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
-            }}
+            style={{ marginTop: "1.5rem", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))" }}
           >
             <StatTile value={pct(stat.inclusion_rate, 0)} label="Play rate" />
             <StatTile value={String(stat.deck_count)} label="Decks including" />
             <StatTile value={String(stat.games)} label="Games with" />
             <StatTile value={pct(stat.winrate)} label="Winrate" />
             {detail.rank_by_inclusion != null && (
-              <StatTile
-                value={`#${detail.rank_by_inclusion}`}
-                label={`Popularity of ${detail.total_ranked}`}
-              />
+              <StatTile value={`#${detail.rank_by_inclusion}`} label={`Popularity of ${detail.total_ranked}`} />
             )}
           </div>
 
           <div
             className="grid"
-            style={{
-              marginTop: "1.5rem",
-              gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-            }}
+            style={{ marginTop: "1.5rem", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}
           >
             <section className="card">
               <h2>Typical deck colors</h2>
@@ -172,13 +149,8 @@ export default async function CardPage({
                       <tr key={p.card_b_id}>
                         <td>
                           <Link
-                            href={`/cards/${p.slug}?cube=${cubeId}`}
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 6,
-                              color: "var(--text)",
-                            }}
+                            href={cubePath(cubeId, `/cards/${p.slug}`)}
+                            style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--text)" }}
                           >
                             <ColorPips bits={p.color_identity} />
                             {p.name}
@@ -214,7 +186,7 @@ export default async function CardPage({
                 {decks.map((d) => (
                   <tr key={d.id}>
                     <td>
-                      <Link href={`/decks/${d.id}`}>{d.name}</Link>
+                      <Link href={cubePath(cubeId, `/decks/${d.id}`)}>{d.name}</Link>
                       {d.owner && <span className="muted"> · {d.owner}</span>}
                     </td>
                     <td>
@@ -232,6 +204,6 @@ export default async function CardPage({
           </div>
         </section>
       )}
-    </main>
+    </div>
   );
 }

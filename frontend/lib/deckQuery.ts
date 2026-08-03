@@ -366,6 +366,7 @@ function tokenize(input: string): string[] {
 // deck list the same query it was counted with. Built here so the query is written in
 // one place and the quoting is not everyone's problem.
 export function deckListHref(
+  cubeId: string,
   terms: string[],
   sort?: { key: string; dir: "asc" | "desc" },
 ): string {
@@ -376,7 +377,8 @@ export function deckListHref(
     params.set("sort", sort.key);
     params.set("dir", sort.dir);
   }
-  return `/decks?${params}`;
+  const qs = params.toString();
+  return `/cube/${cubeId}/decks${qs ? `?${qs}` : ""}`;
 }
 
 // Wraps a value that may hold spaces — a cube's name, a display name. The language has

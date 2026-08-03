@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { apiGetOptional, type DecklistCard, type DecklistDetail } from "@/lib/api";
+import { apiGetOptional, type DecklistDetail } from "@/lib/api";
+import { cubePath } from "@/lib/cube";
 import { ColorPips } from "@/components/ColorPips";
 import { CardBrowser } from "@/components/CardBrowser";
 import { ComboList } from "@/components/ComboList";
@@ -11,8 +12,6 @@ import { fmtDate, pct } from "@/lib/format";
 
 export const revalidate = 3600;
 
-// A deck's fans live inside the 1040px .container, so cards land at ~248px — larger
-// and more readable than the cube's full-bleed 200px. The cap keeps it that way.
 const DECK_MAX_COLS = 5;
 
 const BOARDS: { key: string; label: string }[] = [
@@ -21,29 +20,27 @@ const BOARDS: { key: string; label: string }[] = [
   { key: "maybe", label: "Maybeboard" },
 ];
 
-export default async function DecklistDetailPage({ params }: { params: { id: string } }) {
-  const detail = await apiGetOptional<DecklistDetail>(`/decklists/${params.id}`, 3600);
+export default async function DecklistDetailPage({
+  params,
+}: {
+  params: { id: string; deckId: string };
+}) {
+  const cubeId = params.id;
+  const detail = await apiGetOptional<DecklistDetail>(`/decklists/${params.deckId}`, 3600);
   if (!detail) notFound();
 
   const { decklist: d, cards, user } = detail;
-  // Matched fresh on every read against the cube's configured combos, so this
-  // list reflects the current definitions rather than what they said when the
-  // deck was uploaded. Absent on a response from a backend older than combos.
   const combos = detail.combos ?? [];
-  // Each board reads in the cube's display order (color → cmc → name) rather than
-  // the backend's flat alphabetical one.
   const sections = BOARDS.map((b) => ({
     ...b,
     cards: sortCards(cards.filter((c) => c.board === b.key)),
   })).filter((s) => s.cards.length > 0);
-  // CardFan drops unresolved cards, so with the text list gone this warning is the
-  // only trace of a card that is in the deck but not on the page. Name the names.
   const unresolved = cards.filter((c) => !c.is_resolved);
 
   return (
-    <main className="container">
+    <div style={{ marginTop: "1rem" }}>
       <p className="muted" style={{ marginBottom: "0.25rem" }}>
-        <Link href="/decks">← Decks</Link>
+        <Link href={cubePath(cubeId, "/decks")}>← Decks</Link>
       </p>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <h1 style={{ margin: 0 }}>{d.name}</h1>
@@ -52,7 +49,7 @@ export default async function DecklistDetailPage({ params }: { params: { id: str
       <p className="muted">
         {user && (
           <>
-            by <Link href={`/users/${user.username}`}>{user.display_name}</Link> ·{" "}
+            by <Link href={`/users/${user.username}?cube=${cubeId}`}>{user.display_name}</Link> ·{" "}
           </>
         )}
         {fmtDate(d.played_at)} · {d.card_count} cards
@@ -60,7 +57,7 @@ export default async function DecklistDetailPage({ params }: { params: { id: str
       </p>
       {d.description && <p>{d.description}</p>}
 
-      <OwnerActions deckId={d.id} ownerId={d.user_id} gamesPlayed={d.games_played} />
+      <OwnerActions cubeId={cubeId} deckId={d.id} ownerId={d.user_id} gamesPlayed={d.games_played} />
 
       {d.games_played > 0 && (
         <div
@@ -79,13 +76,11 @@ export default async function DecklistDetailPage({ params }: { params: { id: str
         </p>
       ) : (
         <div style={{ marginTop: "1.5rem" }}>
-          {/* No search here: a deck is forty cards laid out on one screen, and the
-              header already counts them. The cube pool is the page that needs it. */}
           <CardBrowser sections={sections} maxCols={DECK_MAX_COLS} countQuantity searchable={false} />
         </div>
       )}
 
-      <ComboList combos={combos} />
+      <ComboList combos={combos} cubeId={cubeId} />
 
       {unresolved.length > 0 && (
         <p className="muted" style={{ marginTop: "1.5rem", fontSize: "0.85rem" }}>
@@ -101,6 +96,6 @@ export default async function DecklistDetailPage({ params }: { params: { id: str
           </a>
         </p>
       )}
-    </main>
+    </div>
   );
 }

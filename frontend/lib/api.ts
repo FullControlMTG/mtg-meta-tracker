@@ -126,10 +126,21 @@ export const apiDelete = <T>(path: string) => mutate<T>("DELETE", path);
 export interface Cube {
   id: string;
   name: string;
+  owner_id?: string; // null only for an orphaned cube (owner deleted)
   moxfield_public_id?: string;
   description?: string;
   card_list?: string;
   last_synced_at?: string;
+}
+// A pending invite as the invitee's dashboard and the owner's members panel see it.
+export interface CubeInvite {
+  id: string;
+  cube_id: string;
+  cube_name: string;
+  invitee_id: string;
+  invitee_name: string;
+  invited_by?: string;
+  created_at: string;
 }
 export interface CubeView {
   cube: Cube;
