@@ -17,6 +17,7 @@ import {
 } from "@/lib/api";
 import { cubePath } from "@/lib/cube";
 import { useSession } from "@/components/SessionProvider";
+import { UserSearch, MemberRow } from "@/components/UserSearch";
 
 // The owner's control panel for one cube: its settings + pool sync, its members and
 // invites, and its combos. Owner-or-admin only — the backend gates every action, and
@@ -245,28 +246,30 @@ function SyncProgress({ status }: { status?: CubeSyncStatus }) {
 function MembersPanel({ cubeId }: { cubeId: string }) {
   const [members, setMembers] = useState<PublicUser[]>([]);
   const [invites, setInvites] = useState<CubeInvite[]>([]);
-  const [username, setUsername] = useState("");
+  const [allUsers, setAllUsers] = useState<PublicUser[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
 
   function refresh() {
     apiGetOptional<PublicUser[]>(`/cubes/${cubeId}/members`).then((m) => setMembers(m ?? []));
     apiGetOptional<CubeInvite[]>(`/cubes/${cubeId}/invites`).then((i) => setInvites(i ?? []));
   }
-  useEffect(refresh, [cubeId]);
+  useEffect(() => {
+    refresh();
+    apiGetOptional<PublicUser[]>("/users").then((us) => setAllUsers(us ?? []));
+  }, [cubeId]);
 
-  async function invite(e: React.FormEvent) {
-    e.preventDefault();
+  // The search offers everyone who isn't already a member or already invited.
+  const memberIds = new Set(members.map((m) => m.id));
+  const pendingIds = new Set(invites.map((i) => i.invitee_id));
+  const candidates = allUsers.filter((u) => !memberIds.has(u.id) && !pendingIds.has(u.id));
+
+  async function invite(u: PublicUser) {
     setErr(null);
-    setBusy(true);
     try {
-      await apiPost(`/cubes/${cubeId}/invites`, { username: username.trim() });
-      setUsername("");
+      await apiPost(`/cubes/${cubeId}/invites`, { username: u.username });
       refresh();
     } catch (e) {
       setErr(String(e instanceof Error ? e.message : e));
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -284,40 +287,15 @@ function MembersPanel({ cubeId }: { cubeId: string }) {
     <div className="card" style={{ marginTop: "1rem" }}>
       <h2 style={{ marginTop: 0 }}>Members</h2>
 
-      <form onSubmit={invite} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-        <input
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          placeholder="Invite by username"
-          aria-label="Invite by username"
-          style={{ flex: "1 1 200px" }}
-        />
-        <button className="button" disabled={busy || username.trim() === ""}>
-          {busy ? "Inviting…" : "Invite"}
-        </button>
-      </form>
+      <label>Invite a member</label>
+      <UserSearch users={candidates} onSelect={invite} placeholder="Search users to invite…" />
       {err && <p style={{ color: "var(--bad)", marginTop: "0.5rem" }}>{err}</p>}
 
-      <ul style={{ listStyle: "none", padding: 0, margin: "1rem 0 0" }}>
+      <div style={{ marginTop: "1rem" }}>
         {members.map((u) => (
-          <li
-            key={u.id}
-            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.35rem 0" }}
-          >
-            <span>
-              {u.display_name} <span className="muted">@{u.username}</span>
-            </span>
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={() => removeMember(u)}
-              aria-label={`Remove ${u.display_name}`}
-            >
-              Remove
-            </button>
-          </li>
+          <MemberRow key={u.id} user={u} onRemove={() => removeMember(u)} />
         ))}
-      </ul>
+      </div>
 
       {invites.length > 0 && (
         <>

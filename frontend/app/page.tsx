@@ -8,6 +8,7 @@ import { cubePath } from "@/lib/cube";
 import { useSession } from "@/components/SessionProvider";
 import { CardMarqueeBackground } from "@/components/CardMarqueeBackground";
 import { InviteBanner } from "@/components/InviteBanner";
+import { UserSearch, MemberRow } from "@/components/UserSearch";
 
 // Anonymous visitors get the marketing landing; a signed-in user gets their dashboard —
 // the cubes they belong to and any invites waiting. This is the root, replacing the old
@@ -77,7 +78,7 @@ function Dashboard() {
   // Everyone but the caller, for the "invite on create" picker. Usernames aren't secret,
   // and the playgroup is small, so listing them is fine.
   const [others, setOthers] = useState<PublicUser[]>([]);
-  const [invitees, setInvitees] = useState<Set<string>>(new Set());
+  const [invitees, setInvitees] = useState<string[]>([]);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -92,13 +93,16 @@ function Dashboard() {
     );
   }, [me?.id]);
 
-  function toggleInvitee(id: string) {
-    setInvitees((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+  function removeInvitee(id: string) {
+    setInvitees((prev) => prev.filter((x) => x !== id));
   }
+
+  // Candidates the search offers (everyone not already picked) and the picked users
+  // themselves, resolved back to full records for the list below.
+  const candidates = others.filter((u) => !invitees.includes(u.id));
+  const selectedUsers = invitees
+    .map((id) => others.find((u) => u.id === id))
+    .filter((u): u is PublicUser => u != null);
 
   async function createCube(e: React.FormEvent) {
     e.preventDefault();
@@ -108,7 +112,7 @@ function Dashboard() {
       // The cube starts empty; its Manage page is where you paste a list. Fire off the
       // chosen invites, then land on Manage so the owner can finish setup.
       const view = await apiPost<CubeView>("/cubes", { name: newName.trim() });
-      const chosen = others.filter((u) => invitees.has(u.id));
+      const chosen = others.filter((u) => invitees.includes(u.id));
       await Promise.all(
         chosen.map((u) => apiPost(`/cubes/${view.cube.id}/invites`, { username: u.username })),
       );
@@ -157,14 +161,18 @@ function Dashboard() {
         {others.length > 0 && (
           <>
             <label style={{ marginTop: "0.75rem" }}>Invite members (optional)</label>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-              {others.map((u) => (
-                <label key={u.id} style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 400 }}>
-                  <input type="checkbox" checked={invitees.has(u.id)} onChange={() => toggleInvitee(u.id)} />
-                  {u.display_name} <span className="muted">@{u.username}</span>
-                </label>
-              ))}
-            </div>
+            <UserSearch
+              users={candidates}
+              onSelect={(u) => setInvitees((prev) => [...prev, u.id])}
+              placeholder="Search users to invite…"
+            />
+            {selectedUsers.length > 0 && (
+              <div style={{ marginTop: "0.5rem" }}>
+                {selectedUsers.map((u) => (
+                  <MemberRow key={u.id} user={u} onRemove={() => removeInvitee(u.id)} />
+                ))}
+              </div>
+            )}
             <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.8rem" }}>
               They&apos;ll get an invite to accept. You can add or remove members later from Manage cube.
             </p>
