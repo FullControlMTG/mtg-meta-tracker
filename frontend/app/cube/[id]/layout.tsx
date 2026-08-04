@@ -42,13 +42,20 @@ export default async function CubeLayout({
           </p>
           <h1 style={{ margin: 0 }}>{view.cube.name}</h1>
         </div>
-        <CubeSwitcher
-          cubes={cubes.map((c) => ({ id: c.cube.id, name: c.cube.name }))}
-          current={params.id}
-        />
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+          {showManage && (
+            <Link href={cubePath(params.id, "/manage")} className="button">
+              Manage cube
+            </Link>
+          )}
+          <CubeSwitcher
+            cubes={cubes.map((c) => ({ id: c.cube.id, name: c.cube.name }))}
+            current={params.id}
+          />
+        </div>
       </div>
 
-      <CubeTabs cubeId={params.id} showManage={showManage} />
+      <CubeTabs cubeId={params.id} />
 
       {children}
     </div>

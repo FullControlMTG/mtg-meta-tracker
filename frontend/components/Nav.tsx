@@ -2,27 +2,34 @@
 
 import Link from "next/link";
 import { useSession } from "@/components/SessionProvider";
-import { SignOutButton } from "@/components/SignOutButton";
+import { UserMenu } from "@/components/UserMenu";
 
-// The global nav is chrome only — brand + account. Cube navigation (Overview, Cards,
-// Decks, Manage) is a property of the cube you're in and lives on the cube layout's tab
-// bar, so it appears once you're inside a cube rather than at the top level.
-//
-// One row, at every width. Under the breakpoint (.nav-wide / .nav-narrow in globals.css)
-// the brand drops to its emoji and the account cluster drops to a ⚙ — which is why the
-// settings page it opens carries the profile link and the Sign out button of its own.
+// The global nav is chrome only — the brand, an Admin entry for site admins, and the
+// account menu. Cube navigation lives on the cube layout's tab bar, not here.
 export function Nav() {
   const { me } = useSession();
 
   return (
     <nav className="nav">
       <div className="nav-row">
-        <Link href="/" className="nav-brand">
-          🎴<span className="nav-wide"> Meta Tracker</span>
+        {/* A logo that navigates home. It's a link (prefetch + right-click "open in tab"),
+            styled to never underline — the image is the affordance, not text. Swap the
+            emoji fallback by dropping a file at frontend/public/logo.png. */}
+        <Link href="/" className="nav-brand" aria-label="Meta Tracker — home">
+          {/* Falls back to just the wordmark until a file exists at public/logo.png. */}
+          <img
+            className="nav-logo"
+            src="/logo.png"
+            alt=""
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
+          />
+          <span>Meta Tracker</span>
         </Link>
         <div className="nav-links">
           {me?.role === "admin" && (
-            <Link href="/admin/users" className="nav-admin">
+            <Link href="/admin" className="nav-admin">
               Admin
             </Link>
           )}
@@ -36,19 +43,7 @@ export function Nav() {
             Sign in
           </Link>
         ) : (
-          <div className="nav-account">
-            <Link href={`/users/${me.username}`} className="nav-user">
-              {me.display_name || me.username}
-            </Link>
-            <Link href="/settings" className="nav-link nav-wide">
-              Settings
-            </Link>
-            <SignOutButton className="nav-link nav-linkbtn nav-wide" />
-            {/* The mobile stand-in for the two above — the settings page is where sign out went. */}
-            <Link href="/settings" className="nav-link nav-narrow" aria-label="Settings">
-              ⚙
-            </Link>
-          </div>
+          <UserMenu me={me} />
         )}
       </div>
     </nav>

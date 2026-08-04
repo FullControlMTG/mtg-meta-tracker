@@ -3,16 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  apiGetOptional,
-  apiPost,
-  type CubeInvite,
-  type CubeView,
-  type DecklistDetail,
-} from "@/lib/api";
+import { apiGetOptional, apiPost, type CubeView, type PublicUser } from "@/lib/api";
 import { cubePath } from "@/lib/cube";
 import { useSession } from "@/components/SessionProvider";
 import { CardMarqueeBackground } from "@/components/CardMarqueeBackground";
+import { InviteList } from "@/components/InviteList";
 
 // Anonymous visitors get the marketing landing; a signed-in user gets their dashboard —
 // the cubes they belong to and any invites waiting. This is the root, replacing the old
@@ -77,25 +72,32 @@ export default function Home() {
 // spin up a new cube (you own what you create).
 function Dashboard() {
   const router = useRouter();
+  const { me } = useSession();
   const [cubes, setCubes] = useState<CubeView[] | null>(null);
-  const [invites, setInvites] = useState<CubeInvite[]>([]);
+  // Everyone but the caller, for the "invite on create" picker. Usernames aren't secret,
+  // and the playgroup is small, so listing them is fine.
+  const [others, setOthers] = useState<PublicUser[]>([]);
+  const [invitees, setInvitees] = useState<Set<string>>(new Set());
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  function refresh() {
+  function refreshCubes() {
     apiGetOptional<CubeView[]>("/cubes", 0).then((cs) => setCubes(cs ?? []));
-    apiGetOptional<CubeInvite[]>("/me/invites", 0).then((i) => setInvites(i ?? []));
   }
-  useEffect(refresh, []);
+  useEffect(() => {
+    refreshCubes();
+    apiGetOptional<PublicUser[]>("/users", 0).then((us) =>
+      setOthers((us ?? []).filter((u) => u.id !== me?.id)),
+    );
+  }, [me?.id]);
 
-  async function respond(invite: CubeInvite, accept: boolean) {
-    try {
-      await apiPost(`/invites/${invite.id}/${accept ? "accept" : "decline"}`);
-      refresh();
-    } catch (e) {
-      setErr(String(e instanceof Error ? e.message : e));
-    }
+  function toggleInvitee(id: string) {
+    setInvitees((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
   }
 
   async function createCube(e: React.FormEvent) {
@@ -103,8 +105,13 @@ function Dashboard() {
     setErr(null);
     setCreating(true);
     try {
-      // The new cube starts empty; drop the owner on its Manage tab to paste a list.
+      // The cube starts empty; its Manage page is where you paste a list. Fire off the
+      // chosen invites, then land on Manage so the owner can finish setup.
       const view = await apiPost<CubeView>("/cubes", { name: newName.trim() });
+      const chosen = others.filter((u) => invitees.has(u.id));
+      await Promise.all(
+        chosen.map((u) => apiPost(`/cubes/${view.cube.id}/invites`, { username: u.username })),
+      );
       router.push(cubePath(view.cube.id, "/manage"));
     } catch (e) {
       setErr(String(e instanceof Error ? e.message : e));
@@ -116,30 +123,10 @@ function Dashboard() {
     <main className="container">
       <h1>Your cubes</h1>
 
-      {invites.length > 0 && (
-        <div className="card" style={{ marginTop: "1rem" }}>
-          <h2 style={{ marginTop: 0 }}>Invites</h2>
-          {invites.map((i) => (
-            <div
-              key={i.id}
-              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", padding: "0.35rem 0", flexWrap: "wrap" }}
-            >
-              <span>
-                <strong>{i.cube_name}</strong>
-                {i.invited_by && <span className="muted"> · invited by {i.invited_by}</span>}
-              </span>
-              <span style={{ display: "flex", gap: "0.5rem" }}>
-                <button type="button" className="button" onClick={() => respond(i, true)}>
-                  Accept
-                </button>
-                <button type="button" className="ghost-button" onClick={() => respond(i, false)}>
-                  Decline
-                </button>
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="card" style={{ marginTop: "1rem" }}>
+        <h2 style={{ marginTop: 0 }}>Invites</h2>
+        <InviteList onChange={refreshCubes} />
+      </div>
 
       {cubes === null ? (
         <p className="muted" style={{ marginTop: "1rem" }}>
@@ -169,6 +156,24 @@ function Dashboard() {
         <h2 style={{ marginTop: 0 }}>New cube</h2>
         <label htmlFor="cubename">Name</label>
         <input id="cubename" value={newName} onChange={(e) => setNewName(e.target.value)} required />
+
+        {others.length > 0 && (
+          <>
+            <label style={{ marginTop: "0.75rem" }}>Invite members (optional)</label>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+              {others.map((u) => (
+                <label key={u.id} style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 400 }}>
+                  <input type="checkbox" checked={invitees.has(u.id)} onChange={() => toggleInvitee(u.id)} />
+                  {u.display_name} <span className="muted">@{u.username}</span>
+                </label>
+              ))}
+            </div>
+            <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.8rem" }}>
+              They&apos;ll get an invite to accept. You can add or remove members later from Manage cube.
+            </p>
+          </>
+        )}
+
         {err && <p style={{ color: "var(--bad)", marginTop: "0.5rem" }}>{err}</p>}
         <button className="button" style={{ marginTop: "0.75rem" }} disabled={creating || newName.trim() === ""}>
           {creating ? "Creating…" : "Create cube"}
