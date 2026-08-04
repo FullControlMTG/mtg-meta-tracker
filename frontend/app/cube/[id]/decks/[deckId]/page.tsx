@@ -80,7 +80,7 @@ export default async function DecklistDetailPage({
         </div>
       )}
 
-      <ComboList combos={combos} cubeId={cubeId} />
+      <ComboList combos={combos} title="Combos" />
 
       {unresolved.length > 0 && (
         <p className="muted" style={{ marginTop: "1.5rem", fontSize: "0.85rem" }}>

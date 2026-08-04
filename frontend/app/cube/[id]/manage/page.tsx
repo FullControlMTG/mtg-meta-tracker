@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   apiGetOptional,
   apiGetNoStore,
@@ -32,7 +33,14 @@ export default function ManageCubePage({ params }: { params: { id: string } }) {
   }, [cubeId]);
 
   if (me === undefined || view === undefined) return <p style={{ marginTop: "1rem" }}>Loading…</p>;
-  const allowed = me && (me.role === "admin" || me.id === view?.cube.owner_id);
+  if (!view) {
+    return (
+      <p style={{ marginTop: "1rem" }}>
+        Cube not found. <Link href="/">Back to the dashboard</Link>.
+      </p>
+    );
+  }
+  const allowed = me && (me.role === "admin" || me.id === view.cube.owner_id);
   if (!allowed) {
     return (
       <p style={{ marginTop: "1rem" }}>
@@ -46,6 +54,7 @@ export default function ManageCubePage({ params }: { params: { id: string } }) {
       <SettingsPanel cubeId={cubeId} onSaved={refreshSession} />
       <MembersPanel cubeId={cubeId} />
       <CombosPanel cubeId={cubeId} />
+      <DangerZonePanel cubeId={cubeId} cubeName={view.cube.name} />
     </div>
   );
 }
@@ -505,6 +514,66 @@ function CombosPanel({ cubeId }: { cubeId: string }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// --- delete ---
+
+// Deleting a cube cascades to its pool, decks, combos, members, and invites, so it asks
+// the owner to type the cube's name — the same friction GitHub uses for an irreversible,
+// far-reaching delete.
+function DangerZonePanel({ cubeId, cubeName }: { cubeId: string; cubeName: string }) {
+  const router = useRouter();
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const armed = confirm.trim() === cubeName;
+
+  async function del() {
+    if (!armed) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await apiDelete(`/cubes/${cubeId}`);
+      router.push("/");
+    } catch (e) {
+      setErr(String(e instanceof Error ? e.message : e));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card" style={{ marginTop: "1rem", borderColor: "var(--bad, #b00)" }}>
+      <h2 style={{ marginTop: 0 }}>Danger zone</h2>
+      <p className="muted" style={{ marginTop: 0, fontSize: "0.85rem" }}>
+        Deleting removes the cube, its card pool, every deck in it, its combos, and its
+        member list — permanently. This cannot be undone.
+      </p>
+      <label htmlFor="confirm-name">
+        Type <strong>{cubeName}</strong> to confirm
+      </label>
+      <input
+        id="confirm-name"
+        value={confirm}
+        onChange={(e) => setConfirm(e.target.value)}
+        autoComplete="off"
+      />
+      {err && <p style={{ color: "var(--bad)", marginTop: "0.5rem" }}>{err}</p>}
+      <button
+        type="button"
+        className="button"
+        onClick={del}
+        disabled={!armed || busy}
+        style={{
+          marginTop: "0.75rem",
+          background: armed ? "var(--bad, #b00)" : "var(--surface)",
+          color: armed ? "#fff" : "var(--muted)",
+          border: "1px solid var(--border)",
+        }}
+      >
+        {busy ? "Deleting…" : "Delete cube"}
+      </button>
     </div>
   );
 }

@@ -236,18 +236,43 @@ h3 {
   font-weight: 600;
 }
 
-/* Badge over a combo piece that's no longer in the cube pool. */
+/* A combo piece (a card in a combo). Absence from the pool is the only thing marked:
+   a red glow, plus a "Not active in cube" label that appears on hover. A present piece
+   looks like an ordinary card. */
+.combo-piece {
+  position: relative;
+  display: block;
+  width: 168px;
+  max-width: 100%;
+}
+.combo-piece img {
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.35);
+}
+.combo-piece.missing img {
+  box-shadow:
+    0 0 0 2px var(--bad, #b00),
+    0 0 12px 3px rgb(200 30 30 / 0.7);
+}
 .combo-missing {
   position: absolute;
-  top: 6px;
-  left: 6px;
-  padding: 1px 6px;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  padding: 2px 8px;
   border-radius: 999px;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   font-weight: 600;
   color: #fff;
+  white-space: nowrap;
   background: var(--bad, #b00);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.5);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+.combo-piece.missing:hover .combo-missing,
+.combo-piece.missing:focus-visible .combo-missing {
+  opacity: 1;
 }
 
 /* Shared user typeahead (UserSearch) + picked-user rows (MemberRow), used by both the
