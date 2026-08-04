@@ -23,6 +23,7 @@ export default async function CubeDecksPage({
         decks={decks}
         cubeId={params.id}
         showArchetype
+        showOwner
         syncUrl
         initialQuery={searchParams.q ?? ""}
         initialSort={{ key: searchParams.sort, dir: searchParams.dir }}

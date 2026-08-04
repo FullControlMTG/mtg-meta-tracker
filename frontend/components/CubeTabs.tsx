@@ -15,6 +15,7 @@ export function CubeTabs({ cubeId }: { cubeId: string }) {
     { href: home, label: "Overview", exact: true },
     { href: cubePath(cubeId, "/cards"), label: "Cards" },
     { href: cubePath(cubeId, "/decks"), label: "Decks" },
+    { href: cubePath(cubeId, "/combos"), label: "Combos" },
   ];
 
   return (

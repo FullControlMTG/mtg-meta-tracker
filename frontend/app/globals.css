@@ -115,7 +115,9 @@ h3 {
   align-items: center;
   gap: 1.25rem;
   white-space: nowrap;
-  overflow-x: auto;
+  /* No overflow clip here: an `overflow-x: auto` would force overflow-y to auto too and
+     clip the account dropdown that hangs below the row. The name button truncates
+     instead, so the row can't blow out horizontally. */
 }
 /* The brand is a logo link home; it never underlines (the image is the affordance). */
 .nav-brand {
@@ -158,6 +160,7 @@ h3 {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+  max-width: 40vw;
   background: none;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -165,6 +168,9 @@ h3 {
   font: inherit;
   color: var(--text);
   cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .user-menu-button:hover {
   border-color: var(--border);
@@ -185,7 +191,7 @@ h3 {
   border-radius: 10px;
   background: var(--surface);
   box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
-  z-index: 10;
+  z-index: 100;
 }
 .user-menu-item {
   display: block;
@@ -228,6 +234,49 @@ h3 {
   color: var(--text);
   border-bottom-color: var(--accent);
   font-weight: 600;
+}
+
+/* Badge over a combo piece that's no longer in the cube pool. */
+.combo-missing {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--bad, #b00);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
+}
+
+/* Dismissable "you have invites" banner on the dashboard. */
+.invite-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--accent-weak, var(--grid));
+}
+.invite-banner-text {
+  flex: 1;
+  color: var(--text);
+  font-weight: 500;
+}
+.invite-banner-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.2rem;
+}
+.invite-banner-close:hover {
+  color: var(--text);
 }
 
 /* --- search --- */

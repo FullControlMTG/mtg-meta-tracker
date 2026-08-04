@@ -54,15 +54,23 @@ const COLUMNS: SortColumn<DecklistListItem>[] = [
   },
 ];
 
+// Archetype is a sortable column, added only where asked (the cube deck list). Blanks
+// sink via `unknown`, so an unlabelled deck sorts to the bottom either direction.
+const ARCHETYPE_COLUMN: SortColumn<DecklistListItem> = {
+  key: "archetype",
+  label: "Archetype",
+  unknown: (d) => !d.decklist.archetype,
+  compare: (a, b) =>
+    (a.decklist.archetype ?? "").localeCompare(b.decklist.archetype ?? "", undefined, {
+      sensitivity: "base",
+    }),
+};
+
 // A sort named in a URL (`?sort=record&dir=desc`), which is how a stat elsewhere in the
 // app links to the view that explains it. An unknown column is dropped rather than
 // honoured as a dead sort key: the server's own order is the honest fallback.
-//
-// The parsing happens here, on the client side of the boundary, so COLUMNS stays the
-// only list of what is sortable. A page hands over the raw params — a server component
-// cannot call a function exported from a "use client" module anyway.
-function parseSort(key?: string, dir?: string): Sort | null {
-  const col = COLUMNS.find((c) => c.key === key);
+function parseSort(columns: SortColumn<DecklistListItem>[], key?: string, dir?: string): Sort | null {
+  const col = columns.find((c) => c.key === key);
   if (!col) return null;
   // No direction named: take the one a first click on that header would give.
   const fallback = col.descFirst ? "desc" : "asc";
@@ -73,6 +81,7 @@ export function DeckTable({
   decks,
   cubeId,
   showArchetype = false,
+  showOwner = false,
   heading,
   actions,
   filterable = true,
@@ -85,7 +94,11 @@ export function DeckTable({
   // Deck links hang off this cube. A profile page listing one user's decks in a
   // single cube passes that cube's id.
   cubeId: string;
+  // Show the Archetype column (a cube deck list). Off on a single-player profile.
   showArchetype?: boolean;
+  // Show each deck's owner in small text by its name. On for a cube list where decks
+  // have different owners; off on a profile, where they're all the same person.
+  showOwner?: boolean;
   // The page's own title and buttons, hosted in the table's toolbar so the Filter
   // button costs no vertical space of its own — it joins a row that already exists.
   heading?: ReactNode;
@@ -112,11 +125,19 @@ export function DeckTable({
     [decks, compiled, filterable],
   );
 
+  // Archetype slots in after Colors when asked for; the body renders its <td> in the
+  // same position so headers and cells stay aligned.
+  const columns = useMemo(() => {
+    if (!showArchetype) return COLUMNS;
+    const i = COLUMNS.findIndex((c) => c.key === "colors");
+    return [...COLUMNS.slice(0, i + 1), ARCHETYPE_COLUMN, ...COLUMNS.slice(i + 1)];
+  }, [showArchetype]);
+
   // No initial sort unless one was asked for: the server returns most-recently-played
   // first, which is the default view — and matches what the Date column would give on
   // one click.
-  const { rows, sort, toggle } = useTableSort(matches, COLUMNS, {
-    initial: parseSort(initialSort?.key, initialSort?.dir),
+  const { rows, sort, toggle } = useTableSort(matches, columns, {
+    initial: parseSort(columns, initialSort?.key, initialSort?.dir),
     tiebreak: byName,
   });
 
@@ -191,30 +212,34 @@ export function DeckTable({
           <table>
             <thead>
               <tr>
-                {COLUMNS.map((col) => (
+                {columns.map((col) => (
                   <SortHeader key={col.key} col={col} sort={sort} onSort={toggle} />
                 ))}
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ decklist: d }) => (
+              {rows.map((item) => {
+                const d = item.decklist;
+                return (
                 <tr key={d.id}>
                   <td>
                     <Link href={`/cube/${cubeId}/decks/${d.id}`}>{d.name}</Link>
-                    {showArchetype && d.archetype && (
+                    {showOwner && item.user && (
                       <span className="muted" style={{ marginLeft: 6, fontSize: "0.85rem" }}>
-                        {d.archetype}
+                        {item.user.display_name}
                       </span>
                     )}
                   </td>
                   <td>
                     <ColorPips bits={d.color_identity} splash={d.splash_colors} showCode />
                   </td>
+                  {showArchetype && <td>{d.archetype ?? "—"}</td>}
                   <td style={{ whiteSpace: "nowrap" }}>{fmtDate(d.played_at)}</td>
                   <td className="num">{d.games_played > 0 ? `${d.wins}-${d.losses}` : "—"}</td>
                   <td className="num">{pct(d.winrate)}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

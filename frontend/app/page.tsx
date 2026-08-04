@@ -7,7 +7,7 @@ import { apiGetOptional, apiPost, type CubeView, type PublicUser } from "@/lib/a
 import { cubePath } from "@/lib/cube";
 import { useSession } from "@/components/SessionProvider";
 import { CardMarqueeBackground } from "@/components/CardMarqueeBackground";
-import { InviteList } from "@/components/InviteList";
+import { InviteBanner } from "@/components/InviteBanner";
 
 // Anonymous visitors get the marketing landing; a signed-in user gets their dashboard —
 // the cubes they belong to and any invites waiting. This is the root, replacing the old
@@ -123,10 +123,7 @@ function Dashboard() {
     <main className="container">
       <h1>Your cubes</h1>
 
-      <div className="card" style={{ marginTop: "1rem" }}>
-        <h2 style={{ marginTop: 0 }}>Invites</h2>
-        <InviteList onChange={refreshCubes} />
-      </div>
+      <InviteBanner />
 
       {cubes === null ? (
         <p className="muted" style={{ marginTop: "1rem" }}>
