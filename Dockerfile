@@ -17,6 +17,9 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
+# `output: standalone` does NOT bundle public/ — it must be copied in by hand, or the
+# standalone server 404s every static asset (e.g. /logo.png in the nav).
+COPY --from=build /app/public ./public
 # Next.js writes ISR / on-demand revalidation data to .next/cache at runtime.
 # The COPYed .next is root-owned, so pre-create the cache dir owned by the
 # non-root runtime user; otherwise revalidateTag/Path fails with EACCES mkdir.
