@@ -219,14 +219,6 @@ export const CARD_GROUPS: { key: CardGroupKey; label: string }[] = [
   { key: "none", label: "None" },
 ];
 
-// The sort whose first key a grouping already is. When the two match, the sections
-// themselves turn around with a descending sort; any other sort leaves them in place.
-export const GROUP_SORT: Partial<Record<CardGroupKey, CardSortKey>> = {
-  color: "color",
-  cmc: "cmc",
-  type: "type",
-};
-
 export interface GroupableCard extends SortableCard {
   board?: string;
 }
