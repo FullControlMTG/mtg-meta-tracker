@@ -1,3 +1,5 @@
+import type { SortDir } from "@/lib/tableSort";
+
 // WUBRG color-identity bitset helpers, mirroring backend/internal/domain/color.go
 // (W=1 U=2 B=4 R=8 G=16, colorless=0). The hexes are MTG's own pie, so white is a
 // near-white and black a near-black: each disappears into one of the two surfaces, and
@@ -85,8 +87,8 @@ const LAND_RE = /\bland\b/i;
 
 // --- display order ---
 
-// The one shared sort for both the cube pool and a deck's boards: color, then
-// converted mana cost, then name.
+// The default order for both the cube pool and a deck's boards — color, then converted
+// mana cost, then name — and the tiebreak under every other order a reader picks.
 export interface SortableCard {
   card_name: string;
   cmc?: number;
@@ -146,9 +148,60 @@ export function compareCards(a: SortableCard, b: SortableCard): number {
   return a.card_name.localeCompare(b.card_name, undefined, { sensitivity: "base" });
 }
 
-// Copies — the caller's array (a server-fetched payload) is not ours to mutate.
-export function sortCards<T extends SortableCard>(cards: T[]): T[] {
-  return [...cards].sort(compareCards);
+// --- user-chosen order ---
+
+export type CardSortKey = "color" | "cmc" | "name" | "type";
+
+// The order a card browser's sort picker lists them in; the first is the default.
+export const CARD_SORTS: { key: CardSortKey; label: string }[] = [
+  { key: "color", label: "Color" },
+  { key: "cmc", label: "Mana value" },
+  { key: "name", label: "Name" },
+  { key: "type", label: "Type" },
+];
+
+// The order a type sort reads in: spells by how a deck is usually counted, lands last.
+// A card is ranked by the first of these its front face has, so an artifact creature is
+// a creature — except a land, which is a land whatever else it is, as in sectionRank.
+const TYPE_ORDER = [
+  /\bcreature\b/i,
+  /\bplaneswalker\b/i,
+  /\binstant\b/i,
+  /\bsorcery\b/i,
+  /\bartifact\b/i,
+  /\benchantment\b/i,
+  /\bbattle\b/i,
+];
+
+function typeRank(card: SortableCard): number {
+  const front = (card.type_line ?? "").split("//")[0];
+  if (LAND_RE.test(front)) return TYPE_ORDER.length;
+  const i = TYPE_ORDER.findIndex((re) => re.test(front));
+  // Unresolved cards have no type line at all; they trail even the lands.
+  return i === -1 ? TYPE_ORDER.length + 1 : i;
+}
+
+// Only the key a sort is *for*. Direction flips this alone; every tie then falls through
+// to compareCards ascending, so a descending mana-value sort still reads each cmc in color
+// order rather than backwards through the pie.
+const PRIMARY: Record<CardSortKey, (a: SortableCard, b: SortableCard) => number> = {
+  color: (a, b) =>
+    sectionRank(a) - sectionRank(b) ||
+    compareIdentity(a.group_colors ?? 0, b.group_colors ?? 0),
+  cmc: (a, b) => (a.cmc ?? 0) - (b.cmc ?? 0),
+  name: (a, b) => a.card_name.localeCompare(b.card_name, undefined, { sensitivity: "base" }),
+  type: (a, b) => typeRank(a) - typeRank(b),
+};
+
+export function sortCardsBy<T extends SortableCard>(
+  cards: T[],
+  key: CardSortKey,
+  dir: SortDir,
+): T[] {
+  const sign = dir === "asc" ? 1 : -1;
+  const primary = PRIMARY[key];
+  // Copies — the caller's array (a server-fetched payload) is not ours to mutate.
+  return [...cards].sort((a, b) => sign * primary(a, b) || compareCards(a, b));
 }
 
 // Bucket cube cards into the display sections sectionRank ranks: mono W/U/B/R/G,

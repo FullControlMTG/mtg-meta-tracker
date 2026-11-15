@@ -362,6 +362,19 @@ h3 {
   flex: 1 1 200px;
   max-width: 320px;
 }
+/* Pushed to the bar's far end, so the search and its count keep the left where the eye
+   starts; on a deck, where there is no search, it is the bar's only content. */
+.card-sort {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+.card-sort select {
+  width: auto;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.85rem;
+}
 
 /* --- table toolbar and filter --- */
 
