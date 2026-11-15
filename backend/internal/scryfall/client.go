@@ -449,7 +449,7 @@ func toDomain(sc scryCard, raw json.RawMessage) (domain.Card, error) {
 		CMC:             sc.CMC,
 		TypeLine:        sc.TypeLine,
 		OracleText:      sc.OracleText,
-		Colors:          int(castColors(sc)),
+		Colors:          int(sc.printedColors().CastColors()),
 		ColorIdentity:   int(domain.ParseColorIdentity(sc.ColorIdentity)),
 		Rarity:          sc.Rarity,
 		Layout:          sc.Layout,
@@ -472,28 +472,13 @@ func toDomain(sc scryCard, raw json.RawMessage) (domain.Card, error) {
 	return card, nil
 }
 
-// The colors of a card's casting cost. Scryfall reports them per face on a
-// double-faced card and omits the top-level field entirely, so taking `colors` at
-// face value files every DFC under colorless; union the faces instead.
-//
-// Only faces that have a mana cost, though — a face you can't cast can't make the
-// deck its colors. That keeps the faces of a split card, an adventure, or a modal
-// DFC (all separately castable, all with their own cost) and drops the back of a
-// transform card, which is turned up rather than cast: Tamiyo, Inquisitive Student
-// is a blue card whose back, Tamiyo, Seasoned Scholar, is GU, and unioning it made
-// every UW deck running her a deck with a green splash.
-func castColors(sc scryCard) domain.ColorIdentity {
-	if len(sc.Colors) > 0 {
-		return domain.ParseColorIdentity(sc.Colors)
-	}
-	var ci domain.ColorIdentity
+// printedColors hands the color rules the fields of a card they read.
+func (sc scryCard) printedColors() domain.PrintedColors {
+	p := domain.PrintedColors{Colors: sc.Colors}
 	for _, f := range sc.CardFaces {
-		if f.ManaCost == "" {
-			continue
-		}
-		ci = ci.Merge(domain.ParseColorIdentity(f.Colors))
+		p.Faces = append(p.Faces, domain.CardFace{ManaCost: f.ManaCost, Colors: f.Colors})
 	}
-	return ci
+	return p
 }
 
 func strPtr(s string) *string {

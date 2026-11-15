@@ -495,8 +495,9 @@ rule. `store.RecomputeDeckColors` re-derives every deck in a cube from the cache
 `cards` rows (no Scryfall calls), and the analytics job runs it before
 aggregating. A rule change therefore converges on the next run.
 
-Consequence: changing a color rule needs no data migration, but it does need both
-copies of the rule changed — the Go one at ingest and the SQL one for recompute.
+Consequence: changing a color rule needs no data migration. The rules live once,
+in `domain.PrintedColors`; SQL only projects the raw Scryfall fields they read
+(`store.printedColorsCol`), so ingest and recompute cannot disagree.
 
 ### Colors come from casting cost, not color identity
 
@@ -508,6 +509,12 @@ Scryfall omits top-level `colors` on multi-faced cards and reports them per face
 so cast colors union only faces that **have a mana cost**: both halves of a split
 card, an adventure, and a modal DFC count; a transform card's back does not,
 because it is turned up rather than cast.
+
+Sorting asks a different question — what colors the card *is* — so a nonland
+groups by the union of **every** face's colors (`PrintedColors.CardColors`).
+Etali, Primal Conqueror (red front, green back) is cast for red, so a mono-red
+deck stays mono-red, but it sorts as a red-green card, which is where a player
+looks for it.
 
 A color on under 10% of a deck's nonlands (`domain.SplashThreshold`) is a splash:
 stored in `decklists.splash_colors`, excluded from `color_identity` and from every

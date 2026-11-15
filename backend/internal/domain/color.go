@@ -65,12 +65,73 @@ func basicLandTypeColors(text string) ColorIdentity {
 	return ci
 }
 
+// CardFace is the slice of a Scryfall card face the color rules read.
+type CardFace struct {
+	ManaCost string   `json:"mana_cost"`
+	Colors   []string `json:"colors"`
+}
+
+// PrintedColors is what Scryfall says about a card's colors: its top-level
+// `colors` and each face's. Scryfall omits the top-level field on a double-faced
+// card and reports the colors per face, so taking `colors` at face value files
+// every DFC under colorless; both rules below fall back to the faces.
+//
+// There are two rules because there are two questions, and neither is the card's
+// color identity (which also counts the mana symbols in its rules text, so an
+// Azorius Signet is WU):
+//
+//   - CardColors — what colors the card *is*, every face counted. How a card is
+//     sorted and grouped.
+//   - CastColors — what colors a deck has to *cast* to play it. How a deck's
+//     colors are inferred.
+//
+// They differ on a transform card: Etali, Primal Conqueror is cast for red, but
+// its back face is green, so it is a red-green card that a mono-red deck can
+// still run without splashing green.
+type PrintedColors struct {
+	Colors []string   `json:"colors"`
+	Faces  []CardFace `json:"card_faces"`
+}
+
+// CardColors is the union of the colors on every face of the card, castable or
+// not: Etali, Primal Conqueror (red front, green back) is a red-green card, and
+// sorts with the gold cards rather than with the red ones.
+func (p PrintedColors) CardColors() ColorIdentity {
+	ci := ParseColorIdentity(p.Colors)
+	for _, f := range p.Faces {
+		ci = ci.Merge(ParseColorIdentity(f.Colors))
+	}
+	return ci
+}
+
+// CastColors is the colors of the card's casting costs: only faces that have a
+// mana cost count, since a face you can't cast can't make a deck its colors. That
+// keeps both halves of a split card, an adventure, and a modal DFC, and drops the
+// back of a transform card, which is turned up rather than cast: Tamiyo,
+// Inquisitive Student is a blue card to cast whose back, Tamiyo, Seasoned Scholar,
+// is GU, and unioning it made every UW deck running her a deck with a green splash.
+func (p PrintedColors) CastColors() ColorIdentity {
+	if len(p.Colors) > 0 {
+		return ParseColorIdentity(p.Colors)
+	}
+	var ci ColorIdentity
+	for _, f := range p.Faces {
+		if f.ManaCost == "" {
+			continue
+		}
+		ci = ci.Merge(ParseColorIdentity(f.Colors))
+	}
+	return ci
+}
+
 // GroupColors is the WUBRG bitset a card is *displayed* under, which is not the
 // same question as its color identity.
 //
-// A nonland groups by its casting cost, so a mana rock whose only colored mana
-// symbols sit in an activated ability (an Azorius Signet, a Talisman) groups with
-// the artifacts rather than with the gold cards.
+// A nonland groups by its card colors (PrintedColors.CardColors), so a mana rock
+// whose only colored mana symbols sit in an activated ability (an Azorius Signet,
+// a Talisman) groups with the artifacts rather than with the gold cards, and a
+// transform card whose faces are two colors (Etali, Primal Conqueror) groups with
+// the gold cards rather than under the color of its front.
 //
 // A land groups by every color it is *related to*, since the colors a land cares
 // about are rarely in its mana cost and often not in its identity either: the
@@ -124,8 +185,8 @@ func (ci ColorIdentity) String() string {
 const SplashThreshold = 0.10
 
 // DeckColorCard is one main-board entry's contribution to a deck's colors: the
-// colors of its *casting cost* (Scryfall `colors`, never color_identity), whether
-// it is a land, and how many copies the list runs.
+// colors of its *casting cost* (PrintedColors.CastColors, never color_identity),
+// whether it is a land, and how many copies the list runs.
 type DeckColorCard struct {
 	Colors   ColorIdentity
 	IsLand   bool

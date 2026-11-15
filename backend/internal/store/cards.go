@@ -98,7 +98,7 @@ func (s *Store) LookupCubeCardsByName(ctx context.Context, cubeID uuid.UUID, nam
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT c.scryfall_id, c.name, c.cmc, c.color_identity, c.type_line,
-			c.raw->>'flavor_name',`+castColorCol+`
+			c.raw->>'flavor_name',`+printedColorsCol+`
 		FROM cards c
 		JOIN cube_cards cc ON cc.card_id = c.scryfall_id
 		WHERE cc.cube_id = $1 AND cc.is_active AND (
@@ -113,12 +113,12 @@ func (s *Store) LookupCubeCardsByName(ctx context.Context, cubeID uuid.UUID, nam
 	for rows.Next() {
 		var c domain.Card
 		var flavor *string
-		var colors []string
+		var colors domain.PrintedColors
 		if err := rows.Scan(&c.ScryfallID, &c.Name, &c.CMC, &c.ColorIdentity, &c.TypeLine,
 			&flavor, &colors); err != nil {
 			return nil, err
 		}
-		c.Colors = int(domain.ParseColorIdentity(colors))
+		c.Colors = int(colors.CastColors())
 		out[strings.ToLower(c.Name)] = c
 		out[strings.ToLower(FrontFace(c.Name))] = c
 		if flavor != nil && *flavor != "" {
@@ -197,41 +197,37 @@ func (s *Store) ListCubeCards(ctx context.Context, cubeID uuid.UUID) ([]CubeCard
 // oracle text of a whole cube would dwarf the rest of the payload, to say nothing
 // of the raw Scryfall blob two of these are extracted from.
 type groupColorInputs struct {
-	colors     []string
+	colors     domain.PrintedColors
 	oracleText *string
 	produced   []string
 }
 
-// The colors of a card's casting cost, for a `cards` row aliased `c` that may be
-// all-NULL (an unresolved deck card LEFT JOINs to nothing).
+// A card's domain.PrintedColors, for a `cards` row aliased `c` that may be
+// all-NULL (an unresolved deck card LEFT JOINs to nothing). Scans into a
+// domain.PrintedColors.
 //
 // Read from `raw` rather than the `colors` column because Scryfall omits top-level
-// `colors` on a double-faced card — they live per face — so the column is 0 for
-// every DFC written before that was handled at ingest, and reading it would file
-// them all under Colorless. Fall back to the union of the faces'.
-// jsonb_array_elements is strict, so a card with no `card_faces` yields no rows
-// there and lands on the empty array.
-//
-// Mirrors scryfall.castColors, including the mana-cost filter: only a face you can
-// actually cast contributes, so a transform card's back (no cost) is left out.
-const castColorCol = `
-	coalesce(
-		c.raw -> 'colors',
-		(SELECT jsonb_agg(col)
-		   FROM jsonb_array_elements(c.raw -> 'card_faces') AS f,
-		        jsonb_array_elements(f -> 'colors') AS col
-		  WHERE coalesce(f ->> 'mana_cost', '') <> ''),
-		'[]'::jsonb)`
+// `colors` on a double-faced card — they live per face — and the column holds cast
+// colors only, which is not the question a sort asks. Only the two fields per face
+// the color rules read are projected, so the rules themselves stay in Go, in one
+// copy (domain.PrintedColors), rather than mirrored here in SQL.
+// jsonb_array_elements is strict, so a card with no `card_faces` gets a null list.
+const printedColorsCol = `
+	jsonb_build_object(
+		'colors', c.raw -> 'colors',
+		'card_faces', (SELECT jsonb_agg(jsonb_build_object(
+		                        'mana_cost', f -> 'mana_cost', 'colors', f -> 'colors'))
+		                 FROM jsonb_array_elements(c.raw -> 'card_faces') AS f))`
 
 // The three columns domain.GroupColors needs beyond a card view's own fields.
-const groupColorCols = castColorCol + `,
+const groupColorCols = printedColorsCol + `,
 	c.oracle_text,
 	coalesce(c.raw -> 'produced_mana', '[]'::jsonb)`
 
 func (g groupColorInputs) resolve(typeLine *string, identity int) domain.ColorIdentity {
 	return domain.GroupColors(
 		deref(typeLine), deref(g.oracleText),
-		domain.ParseColorIdentity(g.colors), domain.ColorIdentity(identity), g.produced)
+		g.colors.CardColors(), domain.ColorIdentity(identity), g.produced)
 }
 
 func deref(s *string) string {

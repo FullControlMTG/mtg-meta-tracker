@@ -247,7 +247,7 @@ func (s *Store) UpdateDecklist(ctx context.Context, d *domain.Decklist, cards []
 // back to Scryfall. Idempotent; the analytics job calls it before aggregating.
 func (s *Store) RecomputeDeckColors(ctx context.Context, cubeID uuid.UUID) (int, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT dc.decklist_id, dc.quantity, c.type_line,`+castColorCol+`
+		SELECT dc.decklist_id, dc.quantity, c.type_line,`+printedColorsCol+`
 		FROM decklist_cards dc
 		JOIN decklists d ON d.id = dc.decklist_id
 		JOIN cards c ON c.scryfall_id = dc.card_id
@@ -261,12 +261,12 @@ func (s *Store) RecomputeDeckColors(ctx context.Context, cubeID uuid.UUID) (int,
 		var id uuid.UUID
 		var qty int
 		var typeLine *string
-		var colors []string
+		var colors domain.PrintedColors
 		if err := rows.Scan(&id, &qty, &typeLine, &colors); err != nil {
 			return 0, err
 		}
 		perDeck[id] = append(perDeck[id], domain.DeckColorCard{
-			Colors:   domain.ParseColorIdentity(colors),
+			Colors:   colors.CastColors(),
 			IsLand:   typeLine != nil && domain.IsLandType(*typeLine),
 			Quantity: qty,
 		})
