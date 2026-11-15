@@ -561,6 +561,61 @@ radar. The component's header comment carries the full derivation.
 point, largest on top, rather than in fixed WUBRG order — the last point is the
 one a reader came for. Legend and tooltip follow the same order.
 
+## Deployment
+
+Jenkins deploys `main` to one host with `docker compose` (`Jenkinsfile`,
+`docker-compose.yml`). Checkout, Preflight, Lint & Type-check and Prepare
+Environment run on every branch; everything after them is one `Deploy` stage
+group behind `isMain()`. That helper accepts `BRANCH_NAME` (multibranch jobs) or
+`GIT_BRANCH` (`origin/main`, plain pipeline jobs), because a bare
+`when { branch 'main' }` reads only `BRANCH_NAME` and would skip every deploy in a
+plain job.
+
+Inside `Deploy`, in order:
+
+1. **Build Images**: `docker compose build`, while the old deployment still
+   serves. A broken build fails here and prod stays up.
+2. **Backup Database**: a `pg_dump -Fc` of the running prod database (see below).
+3. **Teardown**: `docker compose down --remove-orphans`, never `-v`.
+4. **Start**: `docker compose up -d --no-build`, which uses the images from step 1.
+5. **Health Check**, then **Smoke Test** (`/api/health`).
+
+### Pre-deploy database dumps
+
+The dump runs before Teardown because the new backend applies its schema when it
+boots. That makes the dump the last copy of the data from before the change.
+
+- **Where.** The `/pwspool/software/mtg-meta-tracker/dump/` bind mount, a sibling
+  of `postgres/`. It is never inside `postgres/`, which is Postgres' own data
+  directory.
+- **Name.** `mtg_meta_<UTC yyyyMMdd'T'HHmmss'Z'>_<git short sha>.dump`, for
+  example `mtg_meta_20261115T081737Z_f8a625a.dump`. Each name records when the
+  dump was taken and which commit was about to deploy, and the names sort by time.
+- **Format.** Postgres custom format (`-Fc`), so `pg_restore` reads it whatever
+  version wrote it, and can restore a single table.
+- **How.** `docker compose run --rm -T db-dump` starts an ephemeral
+  `postgres:16-alpine` on `appnet` (the "tools" profile keeps `up` from starting
+  it), so the Jenkins agent needs no `pg_dump`. The script is piped in on stdin.
+  Writing, checking and pruning all happen inside that container, because the dump
+  directory is on the Docker host and the agent may not be able to see it.
+- **Safety.** The dump is written to a hidden `.partial` file and checked with
+  `pg_restore --list`. Only then is it renamed into place, so a failed dump never
+  looks like a good one. Any failure fails the build before Teardown, which leaves
+  the old deployment running. If no `db` container is running (a first deploy),
+  the stage logs that and skips the dump. Files are mode `0600`, since a dump
+  holds password hashes and sessions.
+- **Retention.** `DUMP_KEEP` in the `Jenkinsfile` (default 30). After each dump,
+  every matching file beyond the newest `DUMP_KEEP` is deleted. Pruning sorts by
+  file name rather than mtime, and files that don't match the pattern are left
+  alone.
+
+Manual restore, until a restore path exists:
+
+```sh
+docker compose run --rm -T db-dump -c \
+  'pg_restore --clean --if-exists --no-owner -d "$PGDATABASE" /dump/<file>.dump'
+```
+
 ## Dependencies
 
 Backend: `go-chi/chi/v5`, `google/uuid`, `jackc/pgx/v5`, `golang.org/x/crypto`,

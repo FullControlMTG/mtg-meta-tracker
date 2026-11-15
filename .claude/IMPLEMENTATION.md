@@ -142,8 +142,12 @@ must be changed together. Nothing enforces that.
 **Deployment is single-host and manual-ish.** Jenkins runs `docker compose up -d
 --build` on one machine, with Postgres on a NAS bind mount
 (`/pwspool/software/mtg-meta-tracker/postgres`). There is no staging environment.
-TODO: confirm whether a backup schedule exists for that path, or whether backups
-are ad hoc.
+Backups are tied to deploys, not to a schedule. Every Jenkins deploy of `main`
+takes a `pg_dump -Fc` into `/pwspool/software/mtg-meta-tracker/dump/` before
+Teardown and keeps the newest 30 (`DUMP_KEEP`). A database that goes a long time
+without a deploy therefore has no recent dump. Nothing copies the dumps off the
+NAS. There is no restore tooling beyond a manual `pg_restore`
+([DESIGN.md](DESIGN.md#pre-deploy-database-dumps)).
 
 ## Areas under active change
 

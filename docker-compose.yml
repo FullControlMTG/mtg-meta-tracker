@@ -31,6 +31,24 @@ services:
       timeout: 3s
       retries: 10
 
+  # One-shot pg_dump client, run by Jenkins before each redeploy with
+  # `docker compose run --rm -T db-dump`; the dump script arrives on stdin.
+  # The "tools" profile keeps `up` from starting it. The dump directory is a
+  # sibling of postgres/, never inside it: that one is Postgres' data dir.
+  db-dump:
+    image: postgres:16-alpine
+    profiles: ["tools"]
+    entrypoint: ["/bin/sh", "-eu"]
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      PGDATABASE: ${POSTGRES_DB:?POSTGRES_DB is required}
+    volumes:
+      - /pwspool/software/mtg-meta-tracker/dump:/dump
+    networks:
+      - appnet
+
   backend:
     build:
       context: ./backend
