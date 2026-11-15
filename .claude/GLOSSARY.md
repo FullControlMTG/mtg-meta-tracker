@@ -72,6 +72,13 @@ which is a different question from its cast colors. A land groups by every color
 it relates to — what it taps for, the basic types it has or fetches — because the
 colors a land cares about are rarely in its cost.
 
+**Deck tag** — a string in `decklists.tags` that files the deck under a collection.
+A cube's is `cubes.deck_tag`, generated as `cube:<cube id>`; a cube's decks are the
+ones carrying it. Tags are how decks reach cubes — there is no `decklists.cube_id`.
+
+**Format** — `decklists.format`, the game format a deck was built for, lower-case.
+`cube` for every deck the app creates today.
+
 **Owner** — the user who created a cube (`cubes.owner_id`); administers it (edit list,
 sync, combos, invite, remove members). Distinct from a plain **member**.
 

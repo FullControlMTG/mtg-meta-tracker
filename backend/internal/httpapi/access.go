@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/appctx"
+	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
 )
 
 // Cube membership is the read boundary and cube ownership the write boundary; a site
@@ -35,6 +36,20 @@ func (s *Server) requireCubeAccess(w http.ResponseWriter, r *http.Request, cubeI
 		return false
 	}
 	return true
+}
+
+// requireDeckAccess gates reading a deck. A deck filed under a cube is read through
+// that cube's membership; one filed under none (its cube was deleted) is visible only
+// to its owner and admins, with the same 404 for everyone else.
+func (s *Server) requireDeckAccess(w http.ResponseWriter, r *http.Request, d *domain.Decklist) bool {
+	if d.CubeID != nil {
+		return s.requireCubeAccess(w, r, *d.CubeID)
+	}
+	if appctx.From(r.Context()).CanMutateOwned(d.UserID) {
+		return true
+	}
+	writeErr(w, http.StatusNotFound, "decklist not found")
+	return false
 }
 
 // requireCubeOwner gates cube administration to the owner or an admin. A member who

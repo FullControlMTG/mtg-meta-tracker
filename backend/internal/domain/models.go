@@ -26,6 +26,10 @@ const (
 	StatusArchived = "archived"
 )
 
+// FormatCube is the format of a deck built from a cube's pool — every deck the
+// app creates today.
+const FormatCube = "cube"
+
 // Decklist archetypes.
 const (
 	ArchetypeAggro    = "aggro"
@@ -75,6 +79,7 @@ type Cube struct {
 	MoxfieldPublicID *string    `json:"moxfield_public_id,omitempty"`
 	Description      *string    `json:"description,omitempty"`
 	CardList         *string    `json:"card_list,omitempty"` // raw pasted decklist; source of truth for the pool
+	DeckTag          string     `json:"deck_tag"`            // the tag that files a deck under this cube
 	ContentHash      *string    `json:"-"`
 	LastSyncedAt     *time.Time `json:"last_synced_at,omitempty"`
 	CreatedAt        time.Time  `json:"created_at"`
@@ -101,8 +106,15 @@ type Card struct {
 }
 
 type Decklist struct {
-	ID            uuid.UUID `json:"id"`
-	CubeID        uuid.UUID `json:"cube_id"`
+	ID uuid.UUID `json:"id"`
+	// The cube whose deck_tag the deck carries; nil for a deck filed under none
+	// (its cube was deleted). Derived from Tags on read, not stored: a deck is
+	// filed into a cube by tag. On create it names the cube to file it under.
+	CubeID *uuid.UUID `json:"cube_id,omitempty"`
+	// The game format the deck was built for, e.g. "cube".
+	Format *string `json:"format,omitempty"`
+	// Every collection the deck is filed under; a cube's tag is its deck_tag.
+	Tags          []string  `json:"tags"`
 	UserID        uuid.UUID `json:"user_id"`
 	Name          string    `json:"name"`
 	Description   *string   `json:"description,omitempty"`

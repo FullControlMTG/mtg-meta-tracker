@@ -116,13 +116,13 @@ colorless = 0.
 | `users` | accounts | `id, username, email, display_name, bio, avatar_url, role, password_hash (nullable)` |
 | `oauth_accounts` | Google links (table only — OAuth is unimplemented) | `user_id, provider, provider_account_id` |
 | `sessions` | server-side sessions, revocable | `id (token), user_id, expires_at` |
-| `cubes` | a card pool = one pasted list | `id, name, owner_id (fk users, SET NULL), card_list (raw paste, source of truth), content_hash, moxfield_public_id (display only), last_synced_at` |
+| `cubes` | a card pool = one pasted list; selects its decks by tag | `id, name, owner_id (fk users, SET NULL), card_list (raw paste, source of truth), deck_tag (generated `cube:<id>`, unique), content_hash, moxfield_public_id (display only), last_synced_at` |
 | `cube_members` | who may see a cube (the read boundary) | `cube_id, user_id, joined_at`, PK `(cube_id, user_id)`; owner is always a member |
 | `cube_invites` | pending/answered cube-join invites | `id, cube_id, invitee_id, invited_by, status (pending\|accepted\|declined), UNIQUE (cube_id, invitee_id)` |
 | `cards` | Scryfall cache | `scryfall_id (pk), oracle_id, name, slug (generated), cmc, type_line, colors, color_identity, rarity, image_*, raw jsonb` |
 | `cube_cards` | pool membership + history | `cube_id, card_id, quantity, added_at, removed_at (nullable), is_active` |
 | `cube_sync_progress` | live progress for the admin sync UI | `cube_id (pk), status, cards_total, images_total/done/failed, unresolved text[]` |
-| `decklists` | deck + metadata + record | see below |
+| `decklists` | deck + metadata + record; the base unit, owned by no cube | see below |
 | `decklist_cards` | normalized deck contents | `decklist_id, card_id, card_name, quantity, is_resolved, board` |
 | `combos` | an admin-named set of cards, per cube | `id, cube_id, name, description`, `UNIQUE (cube_id, name)` |
 | `combo_cards` | the pieces of one combo | `combo_id, card_id, position` |
@@ -138,10 +138,14 @@ silently shrinking the cube.
 ### `decklists`
 
 Metadata, the list, and the record all live in one table; the record is nullable
-and added after the fact.
+and added after the fact. A deck stands alone: it is filed under cubes (and, later,
+other collections) by its tags, not by a foreign key — see
+[Decks are the unit; cubes select them by tag](#decks-are-the-unit-cubes-select-them-by-tag).
 
 ```
-id, cube_id, user_id            -- uploader; owner + admins get update/delete
+id, user_id                     -- uploader; owner + admins get update/delete
+format            text null     -- game format, lower-case; 'cube' for every deck today
+tags              text[]        -- collections it is filed under, e.g. cubes.deck_tag; GIN-indexed
 name, description
 color_identity    smallint      -- inferred bitset (splashes excluded)
 splash_colors     smallint      -- inferred bitset of sub-threshold colors
@@ -377,6 +381,26 @@ sole owner was deleted was opened to all users on the next deploy, so that seed 
 removed. The baseline's remaining backfill hands an orphaned cube's *ownership* to
 the first admin, which grants no membership. It now runs once, so a cube orphaned
 later keeps `owner_id` NULL; admins bypass the owner check anyway.
+
+### Decks are the unit; cubes select them by tag
+
+Decks used to belong to one cube through `decklists.cube_id` and were deleted with
+it. Since migration `0002_decklist_centric` a deck is the base unit and a cube is
+metadata that *selects* decks: each cube has a generated, unique
+`deck_tag = 'cube:' || id`, and its decks are `d.tags @> ARRAY[c.deck_tag]`
+(`store.deckInCube`, the one place that spells it). Everything else a cube has —
+pool, members, invites, combos, analytics runs — is still keyed by `cube_id`.
+
+- A deck can carry several cubes' tags and then appears in each. The API still
+  creates a deck into exactly one cube (`cube_id` in the body adds that cube's
+  tag), and serves `cube_id` as a derived field: the oldest cube whose tag the
+  deck carries, absent if none does.
+- Deleting a cube no longer deletes its decks. A deck under no cube is readable
+  only by its owner and admins (`requireDeckAccess`), and its list cannot be
+  re-resolved (409), since names resolve against a cube's pool.
+- `deck_tag` is generated so it cannot drift and needs no backfill, on migrate or
+  restore. A collection that wants a richer filter than one tag should get its own
+  column when it exists, not a reinterpretation of this one.
 
 ### Analytics are precomputed, not queried live
 
@@ -643,13 +667,19 @@ schema version wrote it:
 
 1. `pg_restore` the dump, unchanged, into a scratch database `restore_scratch_<ns>`
    on the same server (created from `template0`, dropped afterwards either way).
-2. In **one transaction** on the target: drop and recreate the current schema
+2. Upgrade the scratch copy in place: apply every migration it has not recorded
+   (`store.upgradeSource`; a pre-migration dump takes the idempotent baseline
+   first). This is what carries data a migration *moves* — `0002` turns
+   `decklists.cube_id` into a cube tag — which a by-name column copy would drop.
+   A migration that fails here is not fatal: the copy goes ahead from the last
+   version that applied, and the report's `upgrade_error` says so.
+3. In **one transaction** on the target: drop and recreate the current schema
    (`public` in prod), apply every migration, then copy each table from the
    scratch database in foreign-key order (`store.Reimport`).
-3. Print or return a report: per table, rows copied and skipped, columns dropped
+4. Print or return a report: which migrations upgraded the dump, then per table, rows copied and skipped, columns dropped
    and columns blanked.
 
-Copy rules: only columns in both the dump and the schema are copied. A column the
+Copy rules: only columns in both the upgraded dump and the schema are copied. A column the
 schema dropped is discarded; one it added gets its default or NULL; generated
 columns (`cards.slug`, `decklists.winrate`) are recomputed; `schema_migrations`
 is never copied. A renamed column is not detected: it reports as dropped plus
@@ -692,6 +722,34 @@ database role that may `CREATE DATABASE`. Jenkins chowns each new dump to the
 backend's uid 10001 so the API can read it. Tests:
 `TestReimportIntoLatestSchema` and `TestRestoreDumpFromPreMigrationSchema`, which
 skips without `pg_dump` and `pg_restore` on PATH.
+
+### Taking a dump by hand
+
+The pre-deploy dump is automatic, but one can be taken any time — before a risky
+restore, or to rehearse a migration elsewhere. On the prod host, from the checkout,
+this does what Jenkins' Backup Database stage does (same directory, name pattern,
+check and ownership, so retention and the restore API both pick it up):
+
+```sh
+docker compose run --rm -T \
+  -e DUMP_FILE="mtg_meta_$(date -u +%Y%m%dT%H%M%SZ)_$(git rev-parse --short HEAD).dump" \
+  db-dump <<'SH'
+umask 077
+tmp="/dump/.$DUMP_FILE.partial"
+pg_dump -Fc -f "$tmp"
+pg_restore --list "$tmp" >/dev/null
+chown 10001:10001 "$tmp"
+mv "$tmp" "/dump/$DUMP_FILE"
+echo "wrote /dump/$DUMP_FILE"
+SH
+```
+
+To rehearse a restore off prod, copy the file to a machine with the dev database up
+and run `cd backend && go run ./cmd/server restore --file <path>.dump` (it uses the
+dev `DATABASE_URL` default and needs `pg_restore` on PATH). The report's first line
+lists the migrations the dump was upgraded through. Rolling *code* back past a
+migration means restoring a dump taken before it with the *old* binary: a new
+schema has no columns the old code reads.
 
 ## Dependencies
 

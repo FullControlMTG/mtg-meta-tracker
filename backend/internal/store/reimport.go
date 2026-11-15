@@ -31,13 +31,25 @@ type TableReport struct {
 }
 
 type ReimportReport struct {
-	Tables []TableReport `json:"tables"`
+	// Upgraded lists the migrations applied to the dump before it was copied.
+	Upgraded []string `json:"upgraded,omitempty"`
+	// UpgradeError is set when one of those migrations failed: the copy went ahead
+	// from the last version that applied, so data that migration would have moved
+	// between columns may be missing.
+	UpgradeError string        `json:"upgrade_error,omitempty"`
+	Tables       []TableReport `json:"tables"`
 }
 
 const maxSkipReasons = 20
 
 // WriteText prints the report as a table, one indented line per detail.
 func (r *ReimportReport) WriteText(w io.Writer) {
+	if len(r.Upgraded) > 0 {
+		fmt.Fprintf(w, "upgraded the dump with: %s\n", strings.Join(r.Upgraded, ", "))
+	}
+	if r.UpgradeError != "" {
+		fmt.Fprintf(w, "WARNING: could not upgrade the dump, copied it as it was: %s\n", r.UpgradeError)
+	}
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(tw, "TABLE\tCOPIED\tSKIPPED")
 	for _, t := range r.Tables {
@@ -60,7 +72,8 @@ func (r *ReimportReport) WriteText(w io.Writer) {
 
 // Reimport replaces the dst pool's current schema with the latest one built from the
 // migrations, then copies srcSchema's data from src into it, table by table, best
-// effort. It is the restore path's core, and only the restore path's: a deploy
+// effort. It first migrates src itself to the latest schema (see upgradeSource), so
+// src must be a disposable copy — RestoreDump's scratch database. It is the restore path's core, and only the restore path's: a deploy
 // migrates in place, because this discards every dropped or renamed column.
 //
 // The drop, the rebuild and the copy share one transaction, so a failure part-way
@@ -76,6 +89,10 @@ func Reimport(ctx context.Context, src *pgxpool.Pool, srcSchema string, dst *pgx
 		return nil, err
 	}
 	defer srcConn.Release()
+	upgraded, upgradeErr, err := upgradeSource(ctx, srcConn.Conn(), srcSchema, ms)
+	if err != nil {
+		return nil, fmt.Errorf("upgrade dump: %w", err)
+	}
 	srcCols, err := tableColumns(ctx, srcConn.Conn(), srcSchema)
 	if err != nil {
 		return nil, fmt.Errorf("read dump tables: %w", err)
@@ -110,7 +127,34 @@ func Reimport(ctx context.Context, src *pgxpool.Pool, srcSchema string, dst *pgx
 	if err != nil {
 		return nil, err
 	}
+	report.Upgraded = upgraded
+	if upgradeErr != nil {
+		report.UpgradeError = upgradeErr.Error()
+	}
 	return report, nil
+}
+
+// upgradeSource applies the pending migrations to the dump's own schema, before
+// anything is copied. The copy matches columns by name, so data a migration moves
+// between columns — 0002 turns decklists.cube_id into a cube tag — would otherwise be
+// dropped on one side and blanked on the other. A dump from before versioned
+// migrations has no schema_migrations and takes the idempotent baseline first.
+//
+// Each file commits on its own, so a failing one (upgradeErr) leaves src at the last
+// version that applied, and the copy goes ahead from there best-effort, as it did
+// before this step existed. err is for failures that leave nothing to copy from.
+func upgradeSource(ctx context.Context, conn *pgx.Conn, schema string, ms []migration) (applied []string, upgradeErr, err error) {
+	// The schema alone, not "schema, public": an unqualified name a dump lacks must
+	// fail, not land on whatever public holds in the same database.
+	if _, err := conn.Exec(ctx, "SET search_path TO "+pgx.Identifier{schema}.Sanitize()); err != nil {
+		return nil, nil, err
+	}
+	defer conn.Exec(context.Background(), "RESET search_path")
+	if _, err := conn.Exec(ctx, createMigrationsTable); err != nil {
+		return nil, nil, fmt.Errorf("create schema_migrations: %w", err)
+	}
+	applied, upgradeErr = runMigrations(ctx, pgMigrationDB{conn}, ms)
+	return applied, upgradeErr, nil
 }
 
 type column struct {

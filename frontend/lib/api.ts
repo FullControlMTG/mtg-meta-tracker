@@ -130,6 +130,8 @@ export interface Cube {
   moxfield_public_id?: string;
   description?: string;
   card_list?: string;
+  // The tag that files a deck under this cube.
+  deck_tag: string;
   last_synced_at?: string;
 }
 // A pending invite as the invitee's dashboard and the owner's members panel see it.
@@ -185,7 +187,11 @@ export interface CubeCard {
 
 export interface Decklist {
   id: string;
-  cube_id: string;
+  // The cube whose tag the deck carries; absent once that cube is deleted.
+  cube_id?: string;
+  format?: string;
+  // Every collection the deck is filed under; a cube's is its deck_tag.
+  tags: string[];
   user_id: string;
   name: string;
   description?: string;
