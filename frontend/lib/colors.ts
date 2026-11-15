@@ -73,7 +73,7 @@ export function comboName(bits: number): string {
   return identityString(bits);
 }
 
-// --- cube card grouping ---
+// --- card grouping ---
 
 export interface CardGroup<T> {
   key: string;
@@ -100,7 +100,7 @@ export interface SortableCard {
   color_identity?: number;
 }
 
-// Rank of a card's color section, matching groupCubeCards' section order:
+// Rank of a card's color section, indexing COLOR_SECTIONS:
 // mono W,U,B,R,G → Multicolor → Colorless → Lands.
 const MULTICOLOR_RANK = COLORS.length; // 5
 const COLORLESS_RANK = MULTICOLOR_RANK + 1;
@@ -204,38 +204,103 @@ export function sortCardsBy<T extends SortableCard>(
   return [...cards].sort((a, b) => sign * primary(a, b) || compareCards(a, b));
 }
 
-// Bucket cube cards into the display sections sectionRank ranks: mono W/U/B/R/G,
-// then Multicolor (>1 color), then Colorless (0 colors, non-land), then Lands last
-// (anything whose type line is a land, whatever its colors). Empty sections drop.
-export function groupCubeCards<T extends { group_colors: number; type_line?: string }>(
-  cards: T[],
-): CardGroup<T>[] {
-  const order = ["W", "U", "B", "R", "G", "M", "C", "L"];
-  const labels: Record<string, string> = {
-    W: "White",
-    U: "Blue",
-    B: "Black",
-    R: "Red",
-    G: "Green",
-    M: "Multicolor",
-    C: "Colorless",
-    L: "Lands",
-  };
-  const buckets: Record<string, T[]> = {};
-  for (const card of cards) {
-    let key: string;
-    if (card.type_line && LAND_RE.test(card.type_line)) {
-      key = "L";
-    } else if (card.group_colors === 0) {
-      key = "C";
-    } else if (popcount(card.group_colors) > 1) {
-      key = "M";
-    } else {
-      key = colorByBit(card.group_colors).code;
+// --- user-chosen grouping ---
+
+// The sections a card browser splits its cards into, picked independently of the sort:
+// the sort orders the cards *within* each section. "board" only means something for a
+// deck, so a browser offers just the groupings that fit its cards.
+export type CardGroupKey = "color" | "cmc" | "type" | "board" | "none";
+
+export const CARD_GROUPS: { key: CardGroupKey; label: string }[] = [
+  { key: "color", label: "Color" },
+  { key: "cmc", label: "Mana value" },
+  { key: "type", label: "Type" },
+  { key: "board", label: "Board" },
+  { key: "none", label: "None" },
+];
+
+// The sort whose first key a grouping already is. When the two match, the sections
+// themselves turn around with a descending sort; any other sort leaves them in place.
+export const GROUP_SORT: Partial<Record<CardGroupKey, CardSortKey>> = {
+  color: "color",
+  cmc: "cmc",
+  type: "type",
+};
+
+export interface GroupableCard extends SortableCard {
+  board?: string;
+}
+
+const COLOR_SECTIONS = ["White", "Blue", "Black", "Red", "Green", "Multicolor", "Colorless", "Lands"];
+
+// Plural, in TYPE_ORDER's order, then the two ranks typeRank puts past its end.
+const TYPE_SECTIONS = [
+  "Creatures",
+  "Planeswalkers",
+  "Instants",
+  "Sorceries",
+  "Artifacts",
+  "Enchantments",
+  "Battles",
+  "Lands",
+  "Unknown type",
+];
+
+const BOARD_SECTIONS: { key: string; label: string }[] = [
+  { key: "main", label: "Mainboard" },
+  { key: "side", label: "Sideboard" },
+  { key: "maybe", label: "Maybeboard" },
+];
+
+// Mana values past this share one section: a cube's handful of 8- and 9-drops would
+// otherwise each be a section of one.
+const CMC_CAP = 7;
+const CMC_LAND = CMC_CAP + 1;
+
+// A card's section, as a rank (the section order) and the label it shows under.
+function sectionOf(card: GroupableCard, key: CardGroupKey): { rank: number; label: string } {
+  switch (key) {
+    case "color": {
+      const rank = sectionRank(card);
+      return { rank, label: COLOR_SECTIONS[rank] };
     }
-    (buckets[key] ??= []).push(card);
+    case "cmc": {
+      // Lands are not part of the curve; a "0" section full of them hides the real zeros.
+      if (card.type_line && LAND_RE.test(card.type_line)) return { rank: CMC_LAND, label: "Lands" };
+      const cmc = Math.min(Math.floor(card.cmc ?? 0), CMC_CAP);
+      return { rank: cmc, label: cmc === CMC_CAP ? `Mana value ${CMC_CAP}+` : `Mana value ${cmc}` };
+    }
+    case "type": {
+      const rank = typeRank(card);
+      return { rank, label: TYPE_SECTIONS[rank] };
+    }
+    case "board": {
+      const i = BOARD_SECTIONS.findIndex((b) => b.key === card.board);
+      // A board this list doesn't know still shows, after the known ones, under its own name.
+      return i === -1
+        ? { rank: BOARD_SECTIONS.length, label: card.board ?? "Other" }
+        : { rank: i, label: BOARD_SECTIONS[i].label };
+    }
+    case "none":
+      return { rank: 0, label: "All cards" };
   }
-  return order
-    .filter((k) => buckets[k]?.length)
-    .map((k) => ({ key: k, label: labels[k], cards: buckets[k] }));
+}
+
+// Split cards into the sections a grouping names, in that grouping's order. Cards keep
+// their input order within a section — sorting them is the caller's, and separate — and
+// a section with no cards does not appear.
+export function groupCardsBy<T extends GroupableCard>(cards: T[], key: CardGroupKey): CardGroup<T>[] {
+  const byLabel = new Map<string, { rank: number; group: CardGroup<T> }>();
+  for (const card of cards) {
+    const { rank, label } = sectionOf(card, key);
+    let entry = byLabel.get(label);
+    if (!entry) {
+      entry = { rank, group: { key: `${key}:${label}`, label, cards: [] } };
+      byLabel.set(label, entry);
+    }
+    entry.group.cards.push(card);
+  }
+  return [...byLabel.values()]
+    .sort((a, b) => a.rank - b.rank || a.group.label.localeCompare(b.group.label))
+    .map((e) => e.group);
 }
