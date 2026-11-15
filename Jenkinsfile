@@ -30,6 +30,12 @@ pipeline {
     }
 
     environment {
+        // BuildKit, for docker build and compose alike. The Dockerfiles' cache
+        // mounts need it, and the legacy builder would also run the backend's
+        // `test` stage inside every prod image build.
+        DOCKER_BUILDKIT          = '1'
+        COMPOSE_DOCKER_CLI_BUILD = '1'
+
         // Secrets — pulled from Jenkins credentials, never hardcoded.
         DISCORD_WEBHOOK          = credentials('discord-pws-builds-channel-webhook')
         POSTGRES_PASSWORD        = credentials('mtg-meta-tracker-postgres-password')
@@ -78,6 +84,7 @@ pipeline {
 
                     docker version >/dev/null 2>&1         || fail "docker is not available on the agent"
                     docker compose version >/dev/null 2>&1 || fail "docker compose plugin is not available"
+                    docker buildx version >/dev/null 2>&1  || fail "docker buildx plugin is not available (BuildKit is required)"
                     docker network inspect traefik >/dev/null 2>&1 || fail "external docker network 'traefik' does not exist"
                 '''
             }
@@ -91,20 +98,11 @@ pipeline {
                 // bind mount land empty; `docker build` transfers context to the
                 // daemon the same way the compose stages do, so it is immune.
                 // Images are throwaway — the check passes/fails on the RUN exit code.
-                // The backend check is backend/Dockerfile's test stage, built on
-                // the same build stage the deployed image is.
+                // Each check is a stage of the Dockerfile its prod image is built
+                // from (backend: test, frontend: typecheck), so it shares that
+                // image's cached layers instead of installing everything again.
                 sh 'docker build --rm --target test backend'
-                sh '''
-                    set -eu
-                    docker build --rm -f - frontend <<'DOCKERFILE'
-FROM node:20-alpine
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
-COPY . .
-RUN npx --yes tsc --noEmit
-DOCKERFILE
-                '''
+                sh 'docker build --rm --target typecheck .'
             }
         }
 
@@ -125,7 +123,9 @@ DOCKERFILE
                     cleanup() {
                         docker rm -f "$id-db" >/dev/null 2>&1 || true
                         docker network rm "$id" >/dev/null 2>&1 || true
-                        docker image rm -f "$id" >/dev/null 2>&1 || true
+                        # --no-prune: drop only this tag. Pruning would also delete
+                        # the untagged parent layers that later builds reuse.
+                        docker image rm --no-prune "$id" >/dev/null 2>&1 || true
                     }
                     trap cleanup EXIT
 
@@ -145,7 +145,10 @@ DOCKERFILE
                         sleep 1
                     done
 
+                    # The image's Go build cache was a BuildKit mount, so it is not
+                    # inside the image. A named volume keeps this run's compile warm.
                     docker run --rm --network "$id" \
+                        -v mtg-meta-tracker-it-gocache:/root/.cache/go-build \
                         -e TEST_DATABASE_URL='postgres://test:test@db:5432/test?sslmode=disable' \
                         "$id" go test -count=1 ./... \
                         || { echo "integration tests failed" >&2; exit 1; }
