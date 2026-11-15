@@ -5,7 +5,6 @@ import { CardFan, type FanCard } from "@/components/CardFan";
 import {
   CARD_GROUPS,
   CARD_SORTS,
-  GROUP_SORT,
   groupCardsBy,
   sortCardsBy,
   type CardGroupKey,
@@ -25,8 +24,8 @@ import type { SortDir } from "@/lib/tableSort";
 //
 // `groupings` lists the groupings this browser offers, the first being its default: a
 // pool opens by color, a deck by board, since a deck's boards are a fact about the deck.
-// When the grouping and the sort share a key (color and color, say), the sections are
-// that sort's first key and turn around with its direction; otherwise they stay put.
+// The sections always keep the grouping's own order: the sort and its direction only
+// ever reorder the cards inside each one, even when both share a key (color and color).
 //
 // The search is opt-in (`searchable`). A cube pool is hundreds of cards and unreadable
 // without it; a decklist is forty you can already see, so there it is off and the bar —
@@ -63,11 +62,14 @@ export function CardBrowser({
   const deferred = useDeferredValue(query);
   const filtering = searchable && deferred.trim() !== "";
 
-  const sorted = useMemo(() => {
-    let grouped = groupCardsBy(cards, groupKey);
-    if (GROUP_SORT[groupKey] === sortKey && sortDir === "desc") grouped = grouped.reverse();
-    return grouped.map((s) => ({ ...s, cards: sortCardsBy(s.cards, sortKey, sortDir) }));
-  }, [cards, groupKey, sortKey, sortDir]);
+  const sorted = useMemo(
+    () =>
+      groupCardsBy(cards, groupKey).map((s) => ({
+        ...s,
+        cards: sortCardsBy(s.cards, sortKey, sortDir),
+      })),
+    [cards, groupKey, sortKey, sortDir],
+  );
 
   const shown = useMemo(
     () =>
