@@ -7,7 +7,6 @@ import { CardBrowser } from "@/components/CardBrowser";
 import { ComboList } from "@/components/ComboList";
 import { StatTile } from "@/components/StatTile";
 import { OwnerActions } from "@/components/OwnerActions";
-import { sortCards } from "@/lib/colors";
 import { fmtDate, pct } from "@/lib/format";
 
 export const revalidate = 3600;
@@ -33,7 +32,7 @@ export default async function DecklistDetailPage({
   const combos = detail.combos ?? [];
   const sections = BOARDS.map((b) => ({
     ...b,
-    cards: sortCards(cards.filter((c) => c.board === b.key)),
+    cards: cards.filter((c) => c.board === b.key),
   })).filter((s) => s.cards.length > 0);
   const unresolved = cards.filter((c) => !c.is_resolved);
 

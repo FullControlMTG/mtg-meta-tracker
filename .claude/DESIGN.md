@@ -345,7 +345,10 @@ the cube's tab bar (Overview / Cards / Decks / Manage) is on the cube *layout*
 - `/cube/[id]` — the cube **overview** (color charts, the color trend, card table,
   headline `meta_snapshot` numbers). *(ISR 3600)*
 - `/cube/[id]/cards` + `/cube/[id]/cards/[slug]` — the pool (card-fan engine), and per-
-  card detail (inclusion, most-played-with, decks playing it). *(ISR 300)*
+  card detail (inclusion, most-played-with, decks playing it). *(ISR 300)* The pool and
+  a deck's boards share `CardBrowser`, whose client-side sort (color / mana value /
+  name / type, either direction; `sortCardsBy` in `lib/colors.ts`) is not in the URL.
+  Only the color sort keeps the pool's color sections; a deck always keeps its boards.
 - `/cube/[id]/decks` + `/decks/new` + `/decks/[deckId]` + `/decks/[deckId]/edit` — the
   filterable deck table (`?q=/?sort=/?dir=`), create, detail (card fan + combos), edit.
   The owner picker lists the cube's **members**. *(list dynamic; detail ISR 3600)*

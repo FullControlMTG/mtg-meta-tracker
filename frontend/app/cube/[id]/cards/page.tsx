@@ -1,6 +1,6 @@
 import { apiGetOptional, type CubeView, type CubeCard } from "@/lib/api";
 import { CardBrowser } from "@/components/CardBrowser";
-import { groupCubeCards, sortCards } from "@/lib/colors";
+import { groupCubeCards } from "@/lib/colors";
 
 export const revalidate = 300;
 
@@ -18,8 +18,8 @@ export default async function CubeCardsPage({ params }: { params: { id: string }
     apiGetOptional<CubeCard[]>(`/cubes/${params.id}/cards`, 300),
   ]);
   const cards = cardsRaw ?? [];
-  // Sort first, then bucket: groupCubeCards preserves input order within a section.
-  const groups = groupCubeCards(sortCards(cards));
+  // Order within each section is CardBrowser's, from its sort control.
+  const groups = groupCubeCards(cards);
 
   return (
     <div style={{ marginTop: "1rem" }}>
@@ -46,7 +46,7 @@ export default async function CubeCardsPage({ params }: { params: { id: string }
         </p>
       ) : (
         <div style={{ marginTop: "1rem" }}>
-          <CardBrowser sections={groups} countQuantity placeholder="Search the cube…" />
+          <CardBrowser sections={groups} colorSections countQuantity placeholder="Search the cube…" />
         </div>
       )}
     </div>
