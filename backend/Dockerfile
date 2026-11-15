@@ -1,15 +1,26 @@
+# The cache mounts below need BuildKit; Jenkins forces it (DOCKER_BUILDKIT=1).
 FROM golang:1.22-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
+# Modules go into the image layer, not a cache mount: the test image runs
+# `go test` again on an --internal network with no internet, so it must carry them.
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /server ./cmd/server
+# Go's build cache lives in a BuildKit cache mount, not the layer. Without it every
+# source change recompiles pgx, chi and x/crypto from scratch, since COPY . . above
+# invalidates the layer that would otherwise hold the cache.
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -o /server ./cmd/server
 
 # CI's checks, built with `docker build --target test`. The default build (the
-# last stage, runtime) never needs this one. DB tests skip here without
-# TEST_DATABASE_URL; Jenkins runs the image again with it set.
+# last stage, runtime) never needs this one, and BuildKit skips it; the legacy
+# builder would run every stage in order, these tests included, on each deploy.
+# DB tests skip here without TEST_DATABASE_URL; Jenkins runs the image again with
+# it set, and with its own Go build cache volume, since the mount above is not
+# part of the image.
 FROM build AS test
-RUN go vet ./... && go test ./...
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    go vet ./... && go test ./...
 
 FROM alpine:3.20 AS runtime
 # postgresql16-client for pg_restore, which `server restore` and the admin restore

@@ -93,9 +93,17 @@ admin — there is no public signup — seeded via the `BOOTSTRAP_ADMIN_*` env v
 - backend: `docker build --target test backend` — the `test` stage of
   `backend/Dockerfile`, `go vet ./... && go test ./...` on top of the same build
   stage the deployed image uses. Change the backend build there, not in CI.
-- frontend: `npm ci`, then `npx tsc --noEmit`. `npm ci` (here and in the prod
-  `Dockerfile`) installs exactly `package-lock.json`, so commit lockfile changes
-  with any `package.json` change or both builds fail.
+- frontend: `docker build --target typecheck .` — the `typecheck` stage of the
+  root `Dockerfile`, `npx tsc --noEmit` on the same `deps` stage (`npm ci`) the
+  prod image builds from. `npm ci` installs exactly `package-lock.json`, so commit
+  lockfile changes with any `package.json` change or both builds fail.
+
+Both Dockerfiles use BuildKit cache mounts (Go's build cache, npm's cache,
+`.next/cache`), so a source change recompiles only what changed. Jenkins sets
+`DOCKER_BUILDKIT=1` and Preflight requires `docker buildx`. Don't put a
+`--mount` back behind the legacy builder, and don't put the Go module download
+in a cache mount: the integration run has no internet, so the modules must be in
+the image.
 
 Then Integration Tests, on every branch: a throwaway `postgres:16-alpine` on a
 private Docker network, and `go test -count=1 ./...` run in the same `test` image
