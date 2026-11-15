@@ -146,10 +146,6 @@ so it is serialized with recomputes and paused during a database restore.
 the `GOOGLE_*` config, `.env.example` entries and Jenkins credentials were
 dropped until a route uses them. Do not document it as a feature.
 
-**Two copies of the color rule.** `scryfall.castColors` (Go, at ingest) and
-`store.castColorCol` (SQL, for recompute) implement the same logic separately and
-must be changed together. Nothing enforces that.
-
 **Deployment is single-host and manual-ish.** Jenkins builds the images, then runs
 `docker compose up -d --no-build` on one machine, with Postgres on a NAS bind mount
 (`/pwspool/software/mtg-meta-tracker/postgres`). There is no staging environment.

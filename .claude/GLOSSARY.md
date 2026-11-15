@@ -30,6 +30,12 @@ deck read as blue.
 **Casting cost colors** — Scryfall's `colors` field: the colors in a card's mana
 cost. This *is* what deck colors are derived from.
 
+**Card colors** — the colors a card *is*: every face's colors, castable or not.
+Etali, Primal Conqueror is cast for red but its back is green, so it is a
+red-green card — it sorts with the multicolor cards, as it would in a Gruul
+Commander deck. Differs from color identity, which also counts symbols in rules
+text (an Azorius Signet is a WU identity but a colorless card).
+
 **Splash** — a color a deck plays only incidentally. Here: a color appearing on
 fewer than 10% of a deck's nonland cards (`domain.SplashThreshold`).
 
@@ -38,7 +44,8 @@ fewer than 10% of a deck's nonland cards (`domain.SplashThreshold`).
 **DFC (double-faced card)** — a card with two faces. Subtypes matter to color
 inference:
 - *transform* — the back has no mana cost and is turned up, not cast. Its colors
-  do **not** count toward a deck's colors.
+  do **not** count toward a deck's colors, but **do** count toward the card's own
+  colors (how it sorts).
 - *modal DFC* — both faces have mana costs and either can be cast. Both count.
 - *adventure*, *split* — two castable halves on one face. Both count.
 
@@ -63,14 +70,15 @@ pasted rather than fetched; only a `publicId` is kept, for a display link.
 
 ## Project-specific terms
 
-**Cast colors** — the app's name for the color bitset derived from casting costs.
-Implemented twice: `scryfall.castColors` (Go, at ingest) and `store.castColorCol`
-(SQL, for recompute). The two must agree.
+**Cast colors** — the app's name for the color bitset derived from casting costs:
+`domain.PrintedColors.CastColors`. The one copy of the rule; ingest and the SQL
+reads (via `store.printedColorsCol`) both call it.
 
 **Group colors** — `domain.GroupColors`: the colors a card is *displayed* under,
-which is a different question from its cast colors. A land groups by every color
-it relates to — what it taps for, the basic types it has or fetches — because the
-colors a land cares about are rarely in its cost.
+which is a different question from its cast colors. A nonland groups by its card
+colors (`domain.PrintedColors.CardColors`). A land groups by every color it relates
+to — what it taps for, the basic types it has or fetches — because the colors a
+land cares about are rarely in its cost.
 
 **Deck tag** — a string in `decklists.tags` that files the deck under a collection.
 A cube's is `cubes.deck_tag`, generated as `cube:<cube id>`; a cube's decks are the

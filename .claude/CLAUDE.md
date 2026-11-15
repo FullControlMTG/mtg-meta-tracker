@@ -176,8 +176,11 @@ carry a `Co-Authored-By:` trailer.
    starting. See [DESIGN.md](DESIGN.md#schema-as-versioned-migrations).
 2. **A family of derived statistics was deliberately deleted** (commit `b483fbb`)
    and must not be reintroduced. See [GOALS.md](GOALS.md#non-goals).
-3. **Deck color inference exists in two copies** — `scryfall.castColors` in Go and
-   `store.castColorCol` in SQL. Change both. See [GLOSSARY.md](GLOSSARY.md).
+3. **Card colors are game rules and live in one place** — `domain.PrintedColors`
+   (`CardColors` for sorting/grouping, `CastColors` for deck inference). Ingest and
+   every SQL read (`store.printedColorsCol` projects the raw Scryfall fields) feed
+   it; don't reimplement either rule in SQL or TypeScript. See
+   [GLOSSARY.md](GLOSSARY.md).
 4. **Decks are not owned by cubes.** There is no `decklists.cube_id`: a cube's
    decks are the ones whose `tags` hold its `deck_tag`. Filter with
    `store.deckInCube`, which also treats a deck in several cubes correctly. See

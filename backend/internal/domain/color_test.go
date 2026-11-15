@@ -25,6 +25,54 @@ func TestColorlessAndOrdering(t *testing.T) {
 	}
 }
 
+func TestPrintedColors(t *testing.T) {
+	face := func(cost string, colors ...string) CardFace {
+		return CardFace{ManaCost: cost, Colors: colors}
+	}
+	cases := []struct {
+		name     string
+		printed  PrintedColors
+		wantCard string
+		wantCast string
+	}{
+		{"single-faced", PrintedColors{Colors: []string{"W"}}, "W", "W"},
+		{"colorless", PrintedColors{}, "C", "C"},
+		// The reported bug: Etali is cast for red, but its back face is green, so
+		// it is a red-green card — yet a mono-red deck still casts it.
+		{"transform: Etali, Primal Conqueror", PrintedColors{Faces: []CardFace{
+			face("{5}{R}{R}", "R"), face("", "G"),
+		}}, "RG", "R"},
+		// The back is turned up, never cast, so its green does not color a deck.
+		{"transform: Tamiyo, Inquisitive Student", PrintedColors{Faces: []CardFace{
+			face("{U}", "U"), face("", "G", "U"),
+		}}, "UG", "U"},
+		// Both halves are castable on a split card, an adventure, and a modal DFC.
+		{"split", PrintedColors{Colors: []string{"W", "B"}, Faces: []CardFace{
+			face("{W}", "W"), face("{B}", "B"),
+		}}, "WB", "WB"},
+		{"adventure", PrintedColors{Colors: []string{"R"}, Faces: []CardFace{
+			face("{2}{R}", "R"), face("{R}", "R"),
+		}}, "R", "R"},
+		{"modal dfc", PrintedColors{Faces: []CardFace{
+			face("{1}{R}", "R"), face("{3}{B}", "B"),
+		}}, "BR", "BR"},
+		// A land back face has no cost and no colors either way.
+		{"land back", PrintedColors{Faces: []CardFace{
+			face("{1}{B}", "B"), face(""),
+		}}, "B", "B"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.printed.CardColors().String(); got != tc.wantCard {
+				t.Errorf("card colors = %q want %q", got, tc.wantCard)
+			}
+			if got := tc.printed.CastColors().String(); got != tc.wantCast {
+				t.Errorf("cast colors = %q want %q", got, tc.wantCast)
+			}
+		})
+	}
+}
+
 func TestGroupColors(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -45,6 +93,13 @@ func TestGroupColors(t *testing.T) {
 			name: "Azorius Signet", typeLine: "Artifact",
 			oracle:   "{T}: Add {C}. {1}, {T}: Add {W}{U}.",
 			identity: []string{"W", "U"}, produced: []string{"C", "W", "U"}, want: "C",
+		},
+		{
+			// Grouped by both faces' colors, not just the cast front's: a gold card.
+			name: "Etali, Primal Conqueror",
+			typeLine: "Legendary Creature — Elder Giant // " +
+				"Legendary Creature — Phyrexian Elder Giant",
+			colors: []string{"R", "G"}, identity: []string{"R", "G"}, want: "RG",
 		},
 		{
 			name: "Sol Ring", typeLine: "Artifact",

@@ -93,8 +93,8 @@ export interface SortableCard {
   card_name: string;
   cmc?: number;
   type_line?: string;
-  // The colors a card is *displayed* under — its casting cost's colors, or, for a
-  // land, every color it is related to. Derived server-side; see domain.GroupColors.
+  // The colors a card is *displayed* under — the colors on all of its faces, or, for
+  // a land, every color it is related to. Derived server-side; see domain.GroupColors.
   // Optional because an unresolved deck card has no `cards` row to join to.
   group_colors?: number;
   color_identity?: number;
