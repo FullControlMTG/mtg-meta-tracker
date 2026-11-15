@@ -115,9 +115,11 @@ set. Verify against `git status` before relying on this list.
 entire record, so every card-level winrate rests on that attribution. This is the
 root cause behind the removed statistics and the top roadmap item.
 
-**No database tests.** `store/` and `httpapi/` are untested. Every existing Go
-test is a pure unit needing no database, which is why `make test` requires no
-Postgres — and why SQL changes are unverified until run against a real database.
+**Almost no database tests.** `httpapi/` is untested and `store/` has only the
+membership tests in `membership_db_test.go`. Those need a Postgres and skip unless
+`TEST_DATABASE_URL` is set, so `make test` still requires no Postgres. CI does not
+set it yet, which means SQL changes stay unverified until run against a real
+database.
 Current test files: `analytics` (10), `scryfall` (9), `decklist` (6), `domain` (4),
 `ingest` (4), `auth` (2), `images` (2), `httpapi` (2), `moxfield` (1).
 

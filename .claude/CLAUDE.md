@@ -62,6 +62,8 @@ make db-up      # Postgres on :5432 via docker-compose.dev.yml
 make backend    # API on :8080 (go run ./cmd/server)
 make frontend   # Next.js on :3000, proxies /api -> :8080
 make test       # go vet ./... && go test ./... — no database required
+                # DB tests skip unless TEST_DATABASE_URL is set; each runs in
+                # its own throwaway Postgres schema, so the dev db is safe to use
 make db-down    # stop Postgres (ARGS=-v also drops the data volume)
 make db-dump    # dev db -> db/dump.sql (gitignored)
 make db-restore FILE=db/dump.sql

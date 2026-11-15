@@ -360,10 +360,12 @@ administration (users, manual recompute). Invites are in-app (there is no email 
 public signup, so the invitee already has an account): owner invites by username →
 `cube_invites` pending row → the invitee accepts on their dashboard, which enrolls them.
 
-Existing data was migrated in `schema.sql`'s idempotent backfill: cubes owned by the
-first admin, every existing user seeded into every existing cube (so no one lost
-access). The member-seed is guarded to run once per cube (`WHERE NOT EXISTS any
-member`), so an owner removing a member is not undone on the next boot.
+Membership is opt-in: an invite is the only way in besides creating the cube.
+Nothing in `schema.sql` may enroll users. The original migration seeded every user
+into any cube with no members; because the schema re-runs on every boot, a cube
+whose sole owner was deleted was opened to all users on the next deploy, so that
+seed was removed. The remaining backfill only hands an orphaned cube's *ownership*
+to the first admin, which grants no membership (admins bypass the check anyway).
 
 ### Analytics are precomputed, not queried live
 

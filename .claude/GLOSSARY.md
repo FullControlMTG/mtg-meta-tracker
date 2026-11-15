@@ -76,7 +76,8 @@ colors a land cares about are rarely in its cost.
 sync, combos, invite, remove members). Distinct from a plain **member**.
 
 **Member** — a user in `cube_members` for a cube: who may *see* it (decks, analytics,
-cards). The read boundary. The owner is always also a member. Site admins bypass it.
+cards). The read boundary. The owner is always also a member; everyone else gets in only by
+accepting an invite. Site admins bypass it.
 
 **Invite** — a `cube_invites` row inviting an existing user to join a cube. Owner/admin
 creates it (by username); the invitee accepts/declines from their dashboard. Accepting
