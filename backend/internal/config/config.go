@@ -35,6 +35,10 @@ type Config struct {
 	// subdir (ephemeral); mount a volume here for a durable, shared cache.
 	ImageCacheDir string
 
+	// Where the pre-deploy pg_dump files are mounted; the admin restore API lists
+	// and reads dumps only from here.
+	DumpDir string
+
 	// How often to poll Moxfield-backed cubes for list changes.
 	SyncInterval time.Duration
 
@@ -65,6 +69,7 @@ func Load() Config {
 		ScryfallUserAgent:   env("SCRYFALL_USER_AGENT", "mtg-meta-tracker/0.1"),
 		ScryfallMinInterval: time.Duration(envInt("SCRYFALL_MIN_INTERVAL_MS", 100)) * time.Millisecond,
 		ImageCacheDir:       env("IMAGE_CACHE_DIR", ""),
+		DumpDir:             env("DUMP_DIR", "/dumps"),
 		SyncInterval:        time.Duration(envInt("SYNC_INTERVAL_MINUTES", 360)) * time.Minute,
 		RevalidateURL:       env("REVALIDATE_URL", ""),
 		RevalidateSecret:    env("REVALIDATE_SECRET", ""),

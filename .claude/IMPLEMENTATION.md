@@ -150,8 +150,9 @@ Backups are tied to deploys, not to a schedule. Every Jenkins deploy of `main`
 takes a `pg_dump -Fc` into `/pwspool/software/mtg-meta-tracker/dump/` before
 Teardown and keeps the newest 30 (`DUMP_KEEP`). A database that goes a long time
 without a deploy therefore has no recent dump. Nothing copies the dumps off the
-NAS. There is no restore tooling beyond a manual `pg_restore`
-([DESIGN.md](DESIGN.md#pre-deploy-database-dumps)).
+NAS. Restoring is `server restore` or the admin restore API, which reimports
+best-effort into the latest schema and loses renamed columns' data
+([DESIGN.md](DESIGN.md#flashing-the-database-from-a-dump)).
 
 ## Areas under active change
 

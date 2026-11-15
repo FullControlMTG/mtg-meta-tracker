@@ -202,6 +202,9 @@ tmp="/dump/.${DUMP_FILE}.partial"
 trap 'rm -f "$tmp"' EXIT
 pg_dump -Fc -f "$tmp"
 pg_restore --list "$tmp" >/dev/null
+# The backend (uid 10001) reads dumps for the admin restore API; umask 077
+# keeps them private to it and root. Not fatal: the dump is the point.
+chown 10001:10001 "$tmp" || echo "warning: could not chown ${DUMP_FILE} to the backend user" >&2
 mv "$tmp" "/dump/${DUMP_FILE}"
 echo "wrote /dump/${DUMP_FILE} ($(wc -c < "/dump/${DUMP_FILE}") bytes)"
 ls -1 /dump | grep -E '^mtg_meta_[0-9]{8}T[0-9]{6}Z_[0-9a-f]+[.]dump$' | sort -r \

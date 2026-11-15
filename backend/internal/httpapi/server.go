@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/config"
+	"github.com/runyanjake/mtg-meta-tracker/backend/internal/dbrestore"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/decklist"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/images"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/revalidate"
@@ -22,20 +23,26 @@ type Server struct {
 	cfg      config.Config
 	resolver *decklist.Resolver
 	images   *images.Cache
+	restore  *dbrestore.Runner
 }
 
-func New(s *store.Store, cfg config.Config, resolver *decklist.Resolver, imgs *images.Cache) *Server {
+func New(s *store.Store, cfg config.Config, resolver *decklist.Resolver, imgs *images.Cache,
+	restore *dbrestore.Runner) *Server {
 	return &Server{
 		store:    s,
 		cfg:      cfg,
 		resolver: resolver,
 		images:   imgs,
+		restore:  restore,
 	}
 }
 
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID, middleware.RealIP, middleware.Recoverer)
+	// Before resolveCaller: during a restore even the session lookup would wait on
+	// the tables being rebuilt.
+	r.Use(s.maintenance)
 	r.Use(s.resolveCaller)
 
 	// Every route lives in exactly one of the three tiers below. New routes
@@ -147,6 +154,12 @@ func (s *Server) Router() http.Handler {
 			r.Delete("/users/{id}", s.handleDeleteUser)
 			r.Post("/admin/users", s.handleCreateUser)
 			r.Post("/admin/analytics/recompute", s.handleRecomputeAnalytics)
+
+			// Flash the database from a dump in DUMP_DIR. Destructive; see
+			// handleStartRestore.
+			r.Get("/admin/db/dumps", s.handleListDumps)
+			r.Get("/admin/db/restore", s.handleRestoreStatus)
+			r.Post("/admin/db/restore", s.handleStartRestore)
 		})
 	})
 	return r
