@@ -726,22 +726,37 @@ skips without `pg_dump` and `pg_restore` on PATH.
 ### Taking a dump by hand
 
 The pre-deploy dump is automatic, but one can be taken any time — before a risky
-restore, or to rehearse a migration elsewhere. On the prod host, from the checkout,
-this does what Jenkins' Backup Database stage does (same directory, name pattern,
-check and ownership, so retention and the restore API both pick it up):
+restore, or to rehearse a migration elsewhere. Do it against the running `db`
+container, not through `docker compose`: the compose file needs `.env` (its
+`${POSTGRES_USER:?}` interpolation fails without it), and only the Jenkins
+workspace has that. The container carries its own `POSTGRES_USER` and
+`POSTGRES_DB`, so the single quotes below matter — they make the variables expand
+inside the container, not in the host shell where they are unset:
 
 ```sh
-docker compose run --rm -T \
-  -e DUMP_FILE="mtg_meta_$(date -u +%Y%m%dT%H%M%SZ)_$(git rev-parse --short HEAD).dump" \
-  db-dump <<'SH'
-umask 077
-tmp="/dump/.$DUMP_FILE.partial"
-pg_dump -Fc -f "$tmp"
-pg_restore --list "$tmp" >/dev/null
-chown 10001:10001 "$tmp"
-mv "$tmp" "/dump/$DUMP_FILE"
-echo "wrote /dump/$DUMP_FILE"
-SH
+F="mtg_meta_$(date -u +%Y%m%dT%H%M%SZ)_manual.dump"
+D=/pwspool/software/mtg-meta-tracker/dump
+docker exec mtg-cube-db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$D/$F"
+docker exec -i mtg-cube-db pg_restore --list < "$D/$F" > /dev/null && echo "dump OK"
+sudo chown 10001:10001 "$D/$F" && sudo chmod 600 "$D/$F"   # so the backend can read it
+```
+
+`pg_dump` runs inside the container over its local socket, so no password is
+needed. The `_manual` suffix is not a commit hash, so Jenkins' retention never
+prunes the file; the restore API lists it like any other `*.dump`. For an
+interactive SQL shell the same way:
+`docker exec -it mtg-cube-db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'`.
+
+To restore without `.env`, use the admin API rather than `docker compose run`:
+signed in as an admin, run this in the browser console on the site, then poll
+`GET /api/admin/db/restore` for the report.
+
+```js
+await fetch("/api/admin/db/restore", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ dump: "<file>.dump", confirm: "replace the database" }),
+}).then((r) => r.json());
 ```
 
 To rehearse a restore off prod, copy the file to a machine with the dev database up
