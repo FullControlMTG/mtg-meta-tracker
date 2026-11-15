@@ -35,7 +35,7 @@ session cookie stays same-site and there is no CORS layer.
 |---|---|
 | Next.js frontend | All rendering and UX. Proxies `/api/*` to the backend via a rewrite. |
 | Go API (`httpapi`) | Routes, request auth, JSON. `server.go` is the route source of truth. |
-| `store` | All SQL, hand-written, over pgx. Owns `schema.sql`. |
+| `store` | All SQL, hand-written, over pgx. Owns `migrations/`. |
 | `ingest` | Cube pool sync: parse pasted list, resolve, diff `cube_cards`. |
 | `decklist` | Decklist parsing and per-card resolution against the pool. |
 | `scryfall` | Batched card client (75 identifiers per request), rate-limited. |
@@ -361,11 +361,12 @@ public signup, so the invitee already has an account): owner invites by username
 `cube_invites` pending row → the invitee accepts on their dashboard, which enrolls them.
 
 Membership is opt-in: an invite is the only way in besides creating the cube.
-Nothing in `schema.sql` may enroll users. The original migration seeded every user
-into any cube with no members; because the schema re-runs on every boot, a cube
-whose sole owner was deleted was opened to all users on the next deploy, so that
-seed was removed. The remaining backfill only hands an orphaned cube's *ownership*
-to the first admin, which grants no membership (admins bypass the check anyway).
+No migration may enroll users. The original backfill seeded every user into any
+cube with no members; because the schema then re-ran on every boot, a cube whose
+sole owner was deleted was opened to all users on the next deploy, so that seed was
+removed. The baseline's remaining backfill hands an orphaned cube's *ownership* to
+the first admin, which grants no membership. It now runs once, so a cube orphaned
+later keeps `owner_id` NULL; admins bypass the owner check anyway.
 
 ### Analytics are precomputed, not queried live
 
@@ -413,30 +414,41 @@ Consequence: with `REVALIDATE_URL` unset — the default in dev — the webhook 
 silent no-op and pages fall back to their ISR window. A page that looks stale in
 dev is usually this, not a slow job.
 
-### Schema as boot-time idempotent SQL
+### Schema as versioned migrations
 
-`schema.sql` is embedded in the binary and re-applied by `store.EnsureSchema` on
-every startup. There is no migration tool, directory, or version table.
+Schema changes are numbered files in `backend/internal/store/migrations/`
+(`NNNN_description.sql`), embedded in the binary. At startup `store.Migrate` takes a
+Postgres advisory lock, then applies each file not yet recorded in
+`schema_migrations (version, name, applied_at)`, in version order, each in its own
+transaction together with its `schema_migrations` row. A failing file rolls back,
+nothing after it runs, and the server exits before it listens. On an empty database
+`store.Migrate` builds the latest schema; it is the entry point for anything that
+needs one, such as restoring a dump.
 
-Rejected alternatives, both actually tried: a separate migration container
-(`efcd26a` replaced it with a committed dump) and a `db/schema.sql` applied by
-Postgres on first init (`dcdda9a` moved to the current model). The current model
-means a fresh database and an existing one converge without an ordering problem.
+`0001_baseline.sql` is the old `schema.sql`, frozen. Before migrations, that file
+was re-applied on every boot, so every statement had to be idempotent and every
+backfill re-ran forever. That is how a one-time membership seed went on to open
+private cubes. Because the baseline is still idempotent, a database it built (prod
+included) accepts it as `0001` with no data change.
 
-The cost is that every statement must be idempotent, and a failing one stops the
-server from booting. Rules:
+Earlier models, both tried and dropped: a separate migration container (`efcd26a`
+replaced it with a committed dump), and a `db/schema.sql` applied by Postgres on
+first init (`dcdda9a` moved to re-applying `schema.sql` from the binary).
 
-- New tables/indexes: `CREATE TABLE/INDEX IF NOT EXISTS`.
-- New columns: `ALTER TABLE … ADD COLUMN IF NOT EXISTS`, in the *Idempotent
-  migrations for existing databases* section at the bottom — and also in the
-  `CREATE TABLE` block, which covers fresh databases only.
-- New CHECK constraints: normalize existing rows, then `DROP CONSTRAINT IF EXISTS`
-  before `ADD CONSTRAINT` (Postgres has no `ADD CONSTRAINT IF NOT EXISTS`). The
-  archetype enum is the worked example.
-- Tightening to `NOT NULL`: backfill first, then `ALTER COLUMN … SET NOT NULL`.
-  `played_at` is the worked example.
-- A backfill re-runs forever. It is safe only when a later statement makes it
-  unmatchable. Prefer a rule that re-derives itself — see below.
+Rules:
+
+- Never edit a file that has shipped. Change the schema in the next-numbered file.
+  Version numbers must be unique; the loader rejects a misnamed or duplicate file
+  rather than skipping it.
+- A file runs once, so it may be non-idempotent: plain `ALTER TABLE … ADD COLUMN`,
+  `DROP COLUMN`, one-shot backfills.
+- It runs inside a transaction, so nothing that refuses one (`CREATE INDEX
+  CONCURRENTLY`, `VACUUM`).
+- It runs against prod data. Backfill before tightening to `NOT NULL` or adding a
+  `CHECK`.
+- Upgrading a database built by the pre-migration `schema.sql` is covered by
+  `TestMigrateUpgradesPreMigrationDatabase` (its fixture is
+  `store/testdata/schema_pre_migrations.sql`).
 
 ### Recompute rather than backfill
 

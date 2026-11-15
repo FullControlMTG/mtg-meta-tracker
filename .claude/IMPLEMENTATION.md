@@ -48,8 +48,9 @@ instead of a bind mount, `6b6a9c8` renaming credentials, `aa8a390` baking
 
 **Schema delivery model, twice revised.** `efcd26a` replaced a migration
 container with a committed schema dump; `dcdda9a` then moved to applying the
-schema idempotently from the Go binary on every startup, which is the current
-model.
+schema idempotently from the Go binary on every startup. That file was later
+frozen as `migrations/0001_baseline.sql`, and changes now ship as numbered
+migrations applied once each.
 
 **Features (`b232b07` → `6d70fd8`).** `b232b07` implemented roadmap phases 3–5 —
 decklists, the analytics engine, and the frontend — in a single commit. `6d70fd8`
@@ -116,7 +117,8 @@ entire record, so every card-level winrate rests on that attribution. This is th
 root cause behind the removed statistics and the top roadmap item.
 
 **Almost no database tests.** `httpapi/` is untested and `store/` has only the
-membership tests in `membership_db_test.go`. Those need a Postgres and skip unless
+membership tests (`membership_db_test.go`) and the migration tests
+(`migrate_db_test.go`). Those need a Postgres and skip unless
 `TEST_DATABASE_URL` is set, so `make test` still requires no Postgres. CI does not
 set it yet, which means SQL changes stay unverified until run against a real
 database.

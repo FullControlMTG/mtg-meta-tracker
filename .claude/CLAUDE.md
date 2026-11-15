@@ -42,7 +42,7 @@ Inside `backend/internal/`:
 appctx/         Caller context: public vs authenticated, plus role.
 config/         Env-var config loading.
 domain/         Core types: the WUBRG color bitset, enums, deck models.
-store/          pgx repositories, hand-written SQL. schema.sql lives here.
+store/          pgx repositories, hand-written SQL. migrations/ lives here.
 auth/           argon2id passwords, server-side sessions, middleware.
 httpapi/        chi router + handlers. server.go is the route source of truth.
 scryfall/       Batched card client resolving exact printings.
@@ -127,11 +127,11 @@ directly to `main`.
 
 ## Three constraints that break things silently
 
-1. **`backend/internal/store/schema.sql` is applied on every boot.** It is
-   embedded in the binary and re-run by `store.EnsureSchema` at startup. There is
-   no migration tool and no version table. A statement that fails against a
-   populated database stops the server from starting. See
-   [DESIGN.md](DESIGN.md#schema-as-boot-time-idempotent-sql).
+1. **Schema changes are append-only migrations.** Files in
+   `backend/internal/store/migrations/` are applied once each, in order, by
+   `store.Migrate` at startup, and recorded in `schema_migrations`. Never edit a
+   shipped file; add the next number. A failing file stops the server from
+   starting. See [DESIGN.md](DESIGN.md#schema-as-versioned-migrations).
 2. **A family of derived statistics was deliberately deleted** (commit `b483fbb`)
    and must not be reintroduced. See [GOALS.md](GOALS.md#non-goals).
 3. **Deck color inference exists in two copies** — `scryfall.castColors` in Go and

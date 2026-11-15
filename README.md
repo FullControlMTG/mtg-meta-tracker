@@ -85,23 +85,18 @@ House rules, so the codebase stays one thing rather than five:
 
 ## Database
 
-The schema lives in
-[`backend/internal/store/schema.sql`](backend/internal/store/schema.sql). It is
-embedded in the Go binary and applied on **every** backend startup, so there is no
-migration step, no migration directory, and no version table — but it means the
-file must stay idempotent. A statement that fails against an already-populated
-database **stops the server from starting**, so:
+The schema is a series of numbered migrations in
+[`backend/internal/store/migrations/`](backend/internal/store/migrations/)
+(`NNNN_description.sql`), embedded in the Go binary. On startup the backend applies
+each one not yet recorded in the `schema_migrations` table, in order, each in its
+own transaction. A failing migration rolls back and **stops the server from
+starting**. `0001_baseline.sql` is the schema as it stood before migrations.
 
-- New tables/indexes: `CREATE TABLE/INDEX IF NOT EXISTS`.
-- New columns: `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, in the
-  `Idempotent migrations for existing databases` section at the bottom of the file
-  — *not* in the `CREATE TABLE` block, which is a no-op once the table exists.
-- New CHECK constraints: normalize the existing rows first, then
-  `DROP CONSTRAINT IF EXISTS` before `ADD CONSTRAINT` (Postgres has no
-  `ADD CONSTRAINT IF NOT EXISTS`; the archetype enum at the bottom of the file is
-  the worked example).
-- Backfills run on every boot too. Prefer a rule that re-derives itself over a
-  one-shot `UPDATE` that a later edit could undo.
+To change the schema, add the next-numbered file. Never edit one that has shipped:
+databases that already applied it will not run it again. A migration runs once,
+so it can use plain `ALTER TABLE`, `DROP COLUMN` or a one-shot backfill, but it
+runs inside a transaction (no `CREATE INDEX CONCURRENTLY`) and against real data
+(backfill before adding `NOT NULL` or a `CHECK`).
 
 `db/` is a scratch directory for gitignored dumps — the schema is *not* there.
 
