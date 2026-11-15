@@ -11,6 +11,15 @@ def formatCommits(changeSets) {
     return lines.isEmpty() ? 'No recent changes detected.' : lines.join('\n')
 }
 
+// True when this build is of main. A multibranch job sets BRANCH_NAME; a plain
+// pipeline-from-SCM job only sets GIT_BRANCH, as "origin/main". A bare
+// `when { branch 'main' }` reads only BRANCH_NAME, so in a plain job it would
+// silently skip every deploy.
+def isMain() {
+    def branch = env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
+    return branch == 'main' || branch == 'origin/main' || branch == 'refs/heads/main'
+}
+
 pipeline {
     agent any
 
@@ -46,6 +55,10 @@ pipeline {
         COMPOSE_PROJECT_NAME     = 'mtg-meta-tracker'
         BACKEND_CONTAINER        = 'mtg-cube-backend'
         FRONTEND_CONTAINER       = 'mtg-cube-frontend'
+
+        // Pre-deploy pg_dump retention: the newest N dumps in the dump bind
+        // mount (docker-compose.yml, service db-dump) are kept.
+        DUMP_KEEP                = '30'
     }
 
     stages {
@@ -144,63 +157,123 @@ EOF
             }
         }
 
-        stage('Teardown') {
-            steps {
-                // Preserve the pgdata volume — no -v.
-                sh 'docker compose down --remove-orphans || { echo "teardown of previous deployment failed" >&2; exit 1; }'
-            }
-        }
-
-        stage('Build & Deploy') {
-            steps {
-                // .env was generated in the Prepare Environment stage above.
-                sh '''
-                    set -eu
-                    docker compose up -d --build --remove-orphans \
-                        || { echo "build & deploy failed" >&2; exit 1; }
-                '''
-            }
-        }
-
-        stage('Health Check') {
-            steps {
-                // Gate on both containers: Traefik drops an unhealthy frontend
-                // from its load balancer, which surfaces as a 404 in the browser.
-                sh '''
-                    set -eu
-                    wait_healthy() {
-                        name="$1"
-                        deadline=$(( $(date +%s) + 120 ))
-                        while true; do
-                            status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$name" 2>/dev/null || echo missing)
-                            case "$status" in
-                                healthy)
-                                    echo "$name is healthy"; return 0 ;;
-                                exited|dead|missing)
-                                    echo "$name failed to start (status: $status)" >&2
-                                    docker logs --tail=50 "$name" 2>&1 || true
-                                    return 1 ;;
-                            esac
-                            [ "$(date +%s)" -lt "$deadline" ] || { echo "$name did not become healthy within timeout (last status: $status)" >&2; docker logs --tail=50 "$name" 2>&1 || true; return 1; }
-                            sleep 3
-                        done
+        // Everything from here touches prod, so only main gets this far.
+        stage('Deploy') {
+            when { expression { isMain() } }
+            stages {
+                stage('Build Images') {
+                    steps {
+                        // Build while the old deployment is still serving, so a
+                        // failed build leaves prod up instead of torn down.
+                        sh 'docker compose build || { echo "image build failed" >&2; exit 1; }'
                     }
-                    wait_healthy "$BACKEND_CONTAINER"  || exit 1
-                    wait_healthy "$FRONTEND_CONTAINER" || exit 1
-                '''
-            }
-        }
+                }
 
-        stage('Smoke Test') {
-            steps {
-                sh '''
-                    set -eu
-                    body=$(docker compose exec -T backend wget -qO- http://localhost:8080/api/health) \
-                        || { echo "smoke test failed: could not reach /api/health" >&2; exit 1; }
-                    echo "health response: $body"
-                    echo "$body" | grep -q '"ok":true' \
-                        || { echo "smoke test failed: unexpected response body" >&2; exit 1; }
-                '''
+                stage('Backup Database') {
+                    steps {
+                        // Dump before Teardown: the new backend applies its schema
+                        // on boot, and this is the last copy of the data from
+                        // before that. Any failure here fails the build with the
+                        // old deployment still running.
+                        //
+                        // The dump directory lives on the Docker host, which the
+                        // agent may not see (see Lint & Type-check), so writing,
+                        // checking and pruning all happen inside the db-dump
+                        // container. Names sort by time, so pruning sorts by name
+                        // rather than trusting mtimes on the NAS.
+                        sh '''
+                            set -eu
+                            case "$DUMP_KEEP" in
+                                ''|*[!0-9]*|0) echo "DUMP_KEEP must be a positive integer, got '$DUMP_KEEP'" >&2; exit 1 ;;
+                            esac
+
+                            if [ -z "$(docker compose ps --status running --quiet db)" ]; then
+                                echo "No running db container (first deploy?); skipping the pre-deploy dump."
+                                exit 0
+                            fi
+
+                            DUMP_FILE="mtg_meta_$(date -u +%Y%m%dT%H%M%SZ)_$(git rev-parse --short HEAD).dump"
+                            echo "Dumping ${POSTGRES_DB} to ${DUMP_FILE}"
+                            docker compose run --rm -T \
+                                -e DUMP_FILE="$DUMP_FILE" -e DUMP_KEEP="$DUMP_KEEP" \
+                                db-dump <<'SH' || { echo "pre-deploy database dump failed; not deploying" >&2; exit 1; }
+umask 077
+tmp="/dump/.${DUMP_FILE}.partial"
+trap 'rm -f "$tmp"' EXIT
+pg_dump -Fc -f "$tmp"
+pg_restore --list "$tmp" >/dev/null
+mv "$tmp" "/dump/${DUMP_FILE}"
+echo "wrote /dump/${DUMP_FILE} ($(wc -c < "/dump/${DUMP_FILE}") bytes)"
+ls -1 /dump | grep -E '^mtg_meta_[0-9]{8}T[0-9]{6}Z_[0-9a-f]+[.]dump$' | sort -r \
+    | tail -n +$((DUMP_KEEP + 1)) | while read -r old; do
+        echo "pruning /dump/$old"
+        rm -f "/dump/$old"
+    done
+SH
+                        '''
+                    }
+                }
+
+                stage('Teardown') {
+                    steps {
+                        // Preserve the pgdata volume — no -v.
+                        sh 'docker compose down --remove-orphans || { echo "teardown of previous deployment failed" >&2; exit 1; }'
+                    }
+                }
+
+                stage('Start') {
+                    steps {
+                        // Images were built in Build Images; --no-build makes sure
+                        // nothing is rebuilt now that prod is down.
+                        sh '''
+                            set -eu
+                            docker compose up -d --no-build --remove-orphans \
+                                || { echo "deploy failed" >&2; exit 1; }
+                        '''
+                    }
+                }
+
+                stage('Health Check') {
+                    steps {
+                        // Gate on both containers: Traefik drops an unhealthy frontend
+                        // from its load balancer, which surfaces as a 404 in the browser.
+                        sh '''
+                            set -eu
+                            wait_healthy() {
+                                name="$1"
+                                deadline=$(( $(date +%s) + 120 ))
+                                while true; do
+                                    status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$name" 2>/dev/null || echo missing)
+                                    case "$status" in
+                                        healthy)
+                                            echo "$name is healthy"; return 0 ;;
+                                        exited|dead|missing)
+                                            echo "$name failed to start (status: $status)" >&2
+                                            docker logs --tail=50 "$name" 2>&1 || true
+                                            return 1 ;;
+                                    esac
+                                    [ "$(date +%s)" -lt "$deadline" ] || { echo "$name did not become healthy within timeout (last status: $status)" >&2; docker logs --tail=50 "$name" 2>&1 || true; return 1; }
+                                    sleep 3
+                                done
+                            }
+                            wait_healthy "$BACKEND_CONTAINER"  || exit 1
+                            wait_healthy "$FRONTEND_CONTAINER" || exit 1
+                        '''
+                    }
+                }
+
+                stage('Smoke Test') {
+                    steps {
+                        sh '''
+                            set -eu
+                            body=$(docker compose exec -T backend wget -qO- http://localhost:8080/api/health) \
+                                || { echo "smoke test failed: could not reach /api/health" >&2; exit 1; }
+                            echo "health response: $body"
+                            echo "$body" | grep -q '"ok":true' \
+                                || { echo "smoke test failed: unexpected response body" >&2; exit 1; }
+                        '''
+                    }
+                }
             }
         }
     }

@@ -82,9 +82,12 @@ admin — there is no public signup — seeded via the `BOOTSTRAP_ADMIN_*` env v
 - backend: `go vet ./... && go build ./... && go test ./...`
 - frontend: `npx tsc --noEmit`
 
-Then: Prepare Environment, Teardown, Build & Deploy (`docker compose up -d
---build`), Health Check (waits for both containers' Docker healthchecks), Smoke
-Test.
+Then Prepare Environment. Only on `main`, the `Deploy` group follows: Build
+Images (`docker compose build`, while prod still serves), Backup Database
+(`pg_dump -Fc` to `/pwspool/software/mtg-meta-tracker/dump/`; a failure aborts
+the build before anything is torn down), Teardown, Start (`up -d --no-build`),
+Health Check (waits for both containers' Docker healthchecks), Smoke Test. See
+[DESIGN.md](DESIGN.md#deployment).
 
 **There is no linter.** `frontend/package.json` defines `"lint": "next lint"`, but
 the repo has no ESLint config and no ESLint dependency, so the script proves

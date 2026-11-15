@@ -59,6 +59,8 @@ cd frontend && npx tsc --noEmit # type-check the frontend, as CI does
 Note that `docker-compose.yml` is the **production** deployment (Traefik, a NAS bind
 mount for Postgres, a Docker volume for the card-image cache, no published DB port)
 and is not usable for local dev — `make db-up` uses `docker-compose.dev.yml` instead.
+Jenkins dumps the prod database to `/pwspool/software/mtg-meta-tracker/dump/` before
+every deploy and keeps the newest 30 (see `.claude/DESIGN.md`, "Deployment").
 
 ## Auth
 
