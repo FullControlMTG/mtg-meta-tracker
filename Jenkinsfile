@@ -35,8 +35,6 @@ pipeline {
         POSTGRES_PASSWORD        = credentials('mtg-meta-tracker-postgres-password')
         REVALIDATE_SECRET        = credentials('mtg-meta-tracker-revalidate-secret')
         BOOTSTRAP_ADMIN_PASSWORD = credentials('mtg-meta-tracker-bootstrap-admin-password')
-        GOOGLE_CLIENT_ID         = credentials('mtg-meta-tracker-google-client-id')
-        GOOGLE_CLIENT_SECRET     = credentials('mtg-meta-tracker-google-client-secret')
 
         // Non-secret configuration.
         POSTGRES_USER            = 'mtg'
@@ -46,7 +44,6 @@ pipeline {
         SESSION_TTL_HOURS        = '720'
         SCRYFALL_USER_AGENT      = 'mtg-meta-tracker/0.1 (contact: admin@fullcontrolmtg.com)'
         SCRYFALL_MIN_INTERVAL_MS = '100'
-        GOOGLE_REDIRECT_URL      = 'https://cube.fullcontrolmtg.com/api/auth/google/callback'
         // Internal backend->frontend revalidation call, via the compose service DNS name.
         REVALIDATE_URL           = 'http://frontend:3000/api/revalidate'
         BOOTSTRAP_ADMIN_USERNAME = 'admin'
@@ -78,8 +75,6 @@ pipeline {
                     [ -n "${POSTGRES_PASSWORD:-}" ]        || fail "credential POSTGRES_PASSWORD is empty"
                     [ -n "${REVALIDATE_SECRET:-}" ]        || fail "credential REVALIDATE_SECRET is empty"
                     [ -n "${BOOTSTRAP_ADMIN_PASSWORD:-}" ] || fail "credential BOOTSTRAP_ADMIN_PASSWORD is empty"
-                    [ -n "${GOOGLE_CLIENT_ID:-}" ]         || fail "credential GOOGLE_CLIENT_ID is empty"
-                    [ -n "${GOOGLE_CLIENT_SECRET:-}" ]     || fail "credential GOOGLE_CLIENT_SECRET is empty"
 
                     docker version >/dev/null 2>&1         || fail "docker is not available on the agent"
                     docker compose version >/dev/null 2>&1 || fail "docker compose plugin is not available"
@@ -96,24 +91,16 @@ pipeline {
                 // bind mount land empty; `docker build` transfers context to the
                 // daemon the same way the compose stages do, so it is immune.
                 // Images are throwaway — the check passes/fails on the RUN exit code.
-                sh '''
-                    set -eu
-                    docker build --rm -f - backend <<'DOCKERFILE'
-FROM golang:1.22-alpine
-WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN go vet ./... && go build ./... && go test ./...
-DOCKERFILE
-                '''
+                // The backend check is backend/Dockerfile's test stage, built on
+                // the same build stage the deployed image is.
+                sh 'docker build --rm --target test backend'
                 sh '''
                     set -eu
                     docker build --rm -f - frontend <<'DOCKERFILE'
 FROM node:20-alpine
 WORKDIR /app
-COPY package.json ./
-RUN npm install --no-audit --no-fund
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
 COPY . .
 RUN npx --yes tsc --noEmit
 DOCKERFILE
@@ -147,14 +134,8 @@ DOCKERFILE
                         -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test -e POSTGRES_DB=test \
                         postgres:16-alpine >/dev/null
 
-                    docker build --rm -t "$id" -f - backend <<'DOCKERFILE'
-FROM golang:1.22-alpine
-WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN go test -run '^$' ./...
-DOCKERFILE
+                    # Lint & Type-check already built this target, so it comes from cache.
+                    docker build --rm --target test -t "$id" backend
 
                     # The image's init script runs a socket-only server first, so a
                     # TCP probe only passes once the real server is up.
@@ -188,9 +169,6 @@ DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES
 HTTP_ADDR=${HTTP_ADDR}
 SESSION_COOKIE_NAME=${SESSION_COOKIE_NAME}
 SESSION_TTL_HOURS=${SESSION_TTL_HOURS}
-GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-GOOGLE_REDIRECT_URL=${GOOGLE_REDIRECT_URL}
 SCRYFALL_USER_AGENT=${SCRYFALL_USER_AGENT}
 SCRYFALL_MIN_INTERVAL_MS=${SCRYFALL_MIN_INTERVAL_MS}
 REVALIDATE_URL=${REVALIDATE_URL}

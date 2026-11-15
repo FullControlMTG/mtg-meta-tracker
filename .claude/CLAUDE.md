@@ -84,11 +84,16 @@ admin — there is no public signup — seeded via the `BOOTSTRAP_ADMIN_*` env v
 
 `Jenkinsfile` stage "Lint & Type-check" builds two throwaway Docker images:
 
-- backend: `go vet ./... && go build ./... && go test ./...`
-- frontend: `npx tsc --noEmit`
+- backend: `docker build --target test backend` — the `test` stage of
+  `backend/Dockerfile`, `go vet ./... && go test ./...` on top of the same build
+  stage the deployed image uses. Change the backend build there, not in CI.
+- frontend: `npm ci`, then `npx tsc --noEmit`. `npm ci` (here and in the prod
+  `Dockerfile`) installs exactly `package-lock.json`, so commit lockfile changes
+  with any `package.json` change or both builds fail.
 
 Then Integration Tests, on every branch: a throwaway `postgres:16-alpine` on a
-private Docker network, and `go test -count=1 ./...` run against it with
+private Docker network, and `go test -count=1 ./...` run in the same `test` image
+against it with
 `TEST_DATABASE_URL` set, so the DB tests run too; the container, network and image
 are removed whatever the result. A failing test fails the build, which on `main` is
 before anything is torn down.
@@ -110,9 +115,9 @@ Restoring prod from one of those dumps is `docker compose run --rm backend resto
 rebuilds the schema and reimports best-effort; it never runs on deploy. See
 [DESIGN.md](DESIGN.md#flashing-the-database-from-a-dump).
 
-**There is no linter.** `frontend/package.json` defines `"lint": "next lint"`, but
-the repo has no ESLint config and no ESLint dependency, so the script proves
-nothing and CI does not call it. Do not cite it as a passing check.
+**There is no linter.** There is no ESLint config, dependency or `lint` script
+(the old no-op `next lint` script was removed). `tsc --noEmit` is the only
+frontend check.
 
 ## Conventions an agent must follow
 

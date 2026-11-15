@@ -17,11 +17,22 @@ import (
 
 type Handler func(ctx context.Context, payload json.RawMessage) error
 
+// MaxAttempts caps how many times a job runs before it stays failed. Failures are
+// mostly transient (Scryfall down, a deadlock), so a couple of retries heal them;
+// a job that is simply broken stops within minutes.
+const MaxAttempts = 3
+
+// retryDelay backs off a failed job: 1m after its first attempt, then 2m.
+func retryDelay(attempts int) time.Duration {
+	return time.Minute << (attempts - 1)
+}
+
 // Queue is the slice of *store.Store the worker drives, so tests can fake it.
 type Queue interface {
 	ClaimNextJob(ctx context.Context) (*domain.Job, error)
 	CompleteJob(ctx context.Context, id uuid.UUID) error
 	FailJob(ctx context.Context, id uuid.UUID, msg string) error
+	RetryJob(ctx context.Context, id uuid.UUID, msg string, delay time.Duration) error
 }
 
 type Worker struct {
@@ -81,10 +92,24 @@ func (w *Worker) drain(ctx context.Context) {
 			continue
 		}
 		if err := h(ctx, job.Payload); err != nil {
-			log.Printf("jobs: %s failed: %v", job.Type, err)
-			_ = w.store.FailJob(ctx, job.ID, err.Error())
+			w.fail(ctx, job, err)
 			continue
 		}
 		_ = w.store.CompleteJob(ctx, job.ID)
 	}
+}
+
+// fail records a handler error, re-queueing the job while it has attempts left.
+// An unknown type is not retried: no attempt would find a handler either.
+func (w *Worker) fail(ctx context.Context, job *domain.Job, err error) {
+	if job.Attempts < MaxAttempts {
+		delay := retryDelay(job.Attempts)
+		log.Printf("jobs: %s failed (attempt %d/%d), retrying in %s: %v",
+			job.Type, job.Attempts, MaxAttempts, delay, err)
+		_ = w.store.RetryJob(ctx, job.ID, err.Error(), delay)
+		return
+	}
+	log.Printf("jobs: %s failed (attempt %d/%d), giving up: %v",
+		job.Type, job.Attempts, MaxAttempts, err)
+	_ = w.store.FailJob(ctx, job.ID, err.Error())
 }

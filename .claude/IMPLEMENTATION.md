@@ -127,17 +127,26 @@ are not tested yet; that belongs with the restore tool.
 
 **No frontend tests.** None exist. `npx tsc --noEmit` is the only frontend check.
 
-**No linter.** `frontend/package.json` has a `lint` script but no ESLint config or
-dependency. CI does not run it.
+**No linter.** No ESLint config, dependency or `lint` script; the no-op
+`next lint` script was removed rather than wired up.
 
-**Analytics runs are never pruned.** Every recompute inserts a full set of stat
-rows into `analytics_runs` and its child tables, and nothing deletes them.
-`card_pair_stats` grows roughly with the square of the pool, so it dominates.
-TODO: decide a retention policy.
+**Retention policy.** Every recompute inserts a full set of stat rows into
+`analytics_runs` and its child tables; `card_pair_stats` grows roughly with the
+square of the pool, so it dominates. The `prune` job (`jobs.Pruner`), enqueued
+by the scheduler every `SYNC_INTERVAL_MINUTES`, deletes:
 
-**Google OAuth is half-present.** The `oauth_accounts` table and `GOOGLE_*`
-config exist; the Jenkinsfile even injects the credentials. No route implements
-it. Do not document it as a feature.
+- `jobs` rows that are `done` or `failed` with `finished_at` older than
+  `RETENTION_DAYS` (default 30). `pending` and `running` rows are never pruned.
+- `analytics_runs` that are not `is_current` and started more than
+  `RETENTION_DAYS` ago; their stat rows go by `ON DELETE CASCADE`. Nothing reads
+  a superseded run, so this loses no visible data.
+
+`RETENTION_DAYS=0` (or less) turns pruning off. Pruning runs on the job worker,
+so it is serialized with recomputes and paused during a database restore.
+
+**Google OAuth is not implemented.** Only the `oauth_accounts` table remains;
+the `GOOGLE_*` config, `.env.example` entries and Jenkins credentials were
+dropped until a route uses them. Do not document it as a feature.
 
 **Two copies of the color rule.** `scryfall.castColors` (Go, at ingest) and
 `store.castColorCol` (SQL, for recompute) implement the same logic separately and

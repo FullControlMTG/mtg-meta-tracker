@@ -5,6 +5,12 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /server ./cmd/server
 
+# CI's checks, built with `docker build --target test`. The default build (the
+# last stage, runtime) never needs this one. DB tests skip here without
+# TEST_DATABASE_URL; Jenkins runs the image again with it set.
+FROM build AS test
+RUN go vet ./... && go test ./...
+
 FROM alpine:3.20 AS runtime
 # postgresql16-client for pg_restore, which `server restore` and the admin restore
 # API shell out to. Its major version must be >= the server's (postgres:16).

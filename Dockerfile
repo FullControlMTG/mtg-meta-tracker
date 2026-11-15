@@ -3,9 +3,8 @@ FROM node:20-alpine AS build
 # must be set before `npm run build` — a runtime env var is too late.
 ARG BACKEND_ORIGIN=http://backend:8080
 WORKDIR /app
-# No package-lock.json in the repo, so install rather than ci.
-COPY frontend/package.json ./
-RUN npm install
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
 COPY frontend/ ./
 ENV BACKEND_ORIGIN=${BACKEND_ORIGIN}
 RUN npm run build
