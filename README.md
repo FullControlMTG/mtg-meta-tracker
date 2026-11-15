@@ -30,6 +30,14 @@ AI coding agents, but the canonical reference for humans too:
 
 ## Quickstart (dev)
 
+Prerequisites: Docker, Go 1.22 and Node 20 — the versions CI builds with, pinned
+by `backend/go.mod`'s `toolchain` line and `frontend/.nvmrc` (`nvm use`).
+
+**On Windows, run everything from WSL or Git Bash.** The Makefile assumes a POSIX
+shell: `make backend` sets env vars with a `VAR=value command` prefix, and
+`db-dump`/`db-restore` use `>`/`<` redirects, all of which break under `cmd` and
+PowerShell. `.gitattributes` keeps checkouts LF, so `core.autocrlf` doesn't matter.
+
 The backend's built-in defaults already point at the dev database, so no `.env` is
 needed to get running — except for the first admin, which must be seeded (there is
 no open signup; see [Auth](#auth)).
@@ -113,7 +121,3 @@ make db-restore FILE=db/dump.sql   # import a dump into the running db
 make db-schema                     # dump the live schema for diffing (gitignored)
 make db-down ARGS=-v               # stop postgres and drop its data volume
 ```
-
-Phase 0 lays down the schema, the request-context (`appctx.Caller`) abstraction,
-and the app skeleton. Subsequent phases add auth, cube ingestion, decklists, the
-analytics engine, and the frontend — see the roadmap.

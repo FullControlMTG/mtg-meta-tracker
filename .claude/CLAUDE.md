@@ -75,6 +75,12 @@ make db-schema  # live schema -> db/schema.generated.sql, for diffing
 
 Frontend type-check: `cd frontend && npx tsc --noEmit`.
 
+Toolchain: Go 1.22 and Node 20, matching CI's `golang:1.22-alpine` and
+`node:20-alpine`. They are pinned in `backend/go.mod` (`toolchain`),
+`frontend/.nvmrc`, and `frontend/package.json` (`engines`); bump all of them with
+the Dockerfiles and the `Jenkinsfile`. The Makefile needs a POSIX shell, so
+Windows means WSL or Git Bash, not `cmd` or PowerShell. `.gitattributes` forces LF.
+
 The backend's default `DATABASE_URL` points at the dev database, so
 `make db-up && make backend` runs with no `.env`. A usable app also needs a first
 admin — there is no public signup — seeded via the `BOOTSTRAP_ADMIN_*` env vars
@@ -129,10 +135,11 @@ are prose paragraphs explaining the motivation and the trade-off, wrapped at ~76
 columns. No Conventional Commits prefixes, no ticket IDs. AI-assisted commits
 carry a `Co-Authored-By:` trailer.
 
-**Branch naming.** Work lands on `main`. The one other branch in history is
-`fix-mount-permissions` (kebab-case, descriptive, no prefix).
-TODO: confirm whether feature branches and PRs are expected, or whether commits go
-directly to `main`.
+**Branches and PRs.** Work lands on `main` through pull requests: branch from
+`main`, open the PR against `main`, and don't stack on another open PR. Only
+`main` deploys. Human branches are kebab-case and descriptive with no prefix
+(`fix-mount-permissions`, `unit-and-db-integration-tests`); agent branches use
+`agent/<agent>/<id>`.
 
 **Code rules** — these are choices, not accidents:
 

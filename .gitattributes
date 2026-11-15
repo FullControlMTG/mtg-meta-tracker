@@ -1,0 +1,6 @@
+# LF everywhere, whatever the contributor's OS or core.autocrlf: the Makefile,
+# the shell in Jenkinsfile, and the SQL migrations all break or diff noisily on
+# CRLF, and the Linux build images see exactly what was committed.
+* text=auto eol=lf
+
+*.png binary
