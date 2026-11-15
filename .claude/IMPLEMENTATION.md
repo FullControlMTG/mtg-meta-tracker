@@ -92,23 +92,21 @@ had drifted — they still described a `db/schema.sql` migration model and Moxfi
 API fetching, and advertised four routes that do not exist. This commit corrected
 them and added the original root `CLAUDE.md`.
 
-## Uncommitted work in progress
+**Deck dates, color trend, quantities (`effa8ea`).** `played_at` became a deck
+field (`NOT NULL`, defaulting to today, owner-editable, decoupled from the record
+PATCH), with a sortable Date column and `ListDecklists` ordering by it.
+`APP_TIMEZONE`, `GET /api/today`, and a compiled-in `time/tzdata` came with it.
+`color_trend_stats` and `GET /api/analytics/color-trend` feed a hand-rolled
+`ColorTrendChart`. `cube_cards.quantity` was threaded through ingest, store, API,
+and the pool page, folded into the content hash, and `resolverVersion` bumped to
+3. The same commit replaced the root `CLAUDE.md` with this `.claude/` folder.
 
-At the time of writing, the working tree contains a substantial unstaged change
-set. Verify against `git status` before relying on this list.
-
-- `played_at` promoted from a record field to a deck field: `NOT NULL`,
-  defaulting to today, owner-editable, decoupled from the record PATCH; a sortable
-  Date column in the shared deck table; `ListDecklists` now orders by it.
-- `APP_TIMEZONE` config, `GET /api/today`, and `time/tzdata` compiled in.
-- `color_trend_stats` table, its aggregation, `GET /api/analytics/color-trend`,
-  and a hand-rolled `ColorTrendChart` (100% stacked area).
-- `cube_cards.quantity` threaded through ingest, store, API, and the pool page, so
-  a cube running many copies of a card badges them; quantity folded into the
-  content hash and `resolverVersion` bumped to 3.
-- `CardBrowser` search made optional (on for cube pools, off for decklists).
-- `frontend/tsconfig.tsbuildinfo` removed from version control.
-- The root `CLAUDE.md` replaced by this `.claude/` folder.
+**Database operations (PRs #1–#5).** Cube membership became opt-in (the
+backfill that added users to cubes was removed). The boot-time `schema.sql`
+gave way to numbered migrations tracked in `schema_migrations` (`a315c12`).
+Every deploy of `main` takes a `pg_dump -Fc` before Teardown; `server restore`
+and the admin restore API flash any dump into the latest schema. The Jenkins
+Integration Tests stage runs the DB tests against a throwaway Postgres.
 
 ## Known limitations and tech debt
 
@@ -152,8 +150,8 @@ dropped until a route uses them. Do not document it as a feature.
 `store.castColorCol` (SQL, for recompute) implement the same logic separately and
 must be changed together. Nothing enforces that.
 
-**Deployment is single-host and manual-ish.** Jenkins runs `docker compose up -d
---build` on one machine, with Postgres on a NAS bind mount
+**Deployment is single-host and manual-ish.** Jenkins builds the images, then runs
+`docker compose up -d --no-build` on one machine, with Postgres on a NAS bind mount
 (`/pwspool/software/mtg-meta-tracker/postgres`). There is no staging environment.
 Backups are tied to deploys, not to a schedule. Every Jenkins deploy of `main`
 takes a `pg_dump -Fc` into `/pwspool/software/mtg-meta-tracker/dump/` before
@@ -165,6 +163,6 @@ best-effort into the latest schema and loses renamed columns' data
 
 ## Areas under active change
 
-Deck dates, the color-share time series, and cube quantities — all in the
-uncommitted set above. Expect `decklists`, `cube_cards`, and the analytics engine
-to be in flux.
+Deploy and database operations: the Jenkins pipeline, the dump/restore path, and
+the migrations folder. Expect `Jenkinsfile`, `backend/Dockerfile`, `dbrestore/`,
+and `store/migrations/` to keep moving.

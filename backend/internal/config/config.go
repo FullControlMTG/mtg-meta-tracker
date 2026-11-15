@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	// The zoneinfo database, compiled into the binary. The backend runs in a
-	// scratch container with no /usr/share/zoneinfo, where LoadLocation would
-	// otherwise fail and silently drop the app back to UTC.
+	// The zoneinfo database, compiled into the binary. The backend's Alpine
+	// runtime image ships no tzdata package, so there is no /usr/share/zoneinfo
+	// and LoadLocation would otherwise fail and silently drop the app back to UTC.
 	_ "time/tzdata"
 )
 
@@ -35,7 +35,8 @@ type Config struct {
 	// and reads dumps only from here.
 	DumpDir string
 
-	// How often to poll Moxfield-backed cubes for list changes.
+	// How often to re-sync every cube's stored card list. Unchanged lists are
+	// skipped by content hash; the tick mainly retries failed resolves.
 	SyncInterval time.Duration
 
 	// How long finished jobs and superseded analytics runs are kept; zero or
