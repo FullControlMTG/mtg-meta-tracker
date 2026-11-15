@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -12,6 +13,11 @@ import (
 // admin bypasses both. These helpers write the denial response and return false, so a
 // handler reads `if !s.requireCubeAccess(...) { return }`.
 
+type memberStore interface {
+	IsCubeMember(ctx context.Context, cubeID, userID uuid.UUID) (bool, error)
+	IsCubeOwner(ctx context.Context, cubeID, userID uuid.UUID) (bool, error)
+}
+
 // requireCubeAccess gates a cube-scoped read. A non-member gets 404 — they aren't told
 // the cube exists.
 func (s *Server) requireCubeAccess(w http.ResponseWriter, r *http.Request, cubeID uuid.UUID) bool {
@@ -19,7 +25,7 @@ func (s *Server) requireCubeAccess(w http.ResponseWriter, r *http.Request, cubeI
 	if caller.IsAdmin() {
 		return true
 	}
-	member, err := s.store.IsCubeMember(r.Context(), cubeID, caller.UserID)
+	member, err := s.members.IsCubeMember(r.Context(), cubeID, caller.UserID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "could not check cube access")
 		return false
@@ -38,7 +44,7 @@ func (s *Server) requireCubeOwner(w http.ResponseWriter, r *http.Request, cubeID
 	if caller.IsAdmin() {
 		return true
 	}
-	owner, err := s.store.IsCubeOwner(r.Context(), cubeID, caller.UserID)
+	owner, err := s.members.IsCubeOwner(r.Context(), cubeID, caller.UserID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "could not check cube ownership")
 		return false
@@ -46,7 +52,7 @@ func (s *Server) requireCubeOwner(w http.ResponseWriter, r *http.Request, cubeID
 	if owner {
 		return true
 	}
-	member, err := s.store.IsCubeMember(r.Context(), cubeID, caller.UserID)
+	member, err := s.members.IsCubeMember(r.Context(), cubeID, caller.UserID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "could not check cube access")
 		return false

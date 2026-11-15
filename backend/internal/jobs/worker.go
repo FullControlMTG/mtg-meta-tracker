@@ -7,18 +7,28 @@ import (
 	"log"
 	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/store"
 )
 
 type Handler func(ctx context.Context, payload json.RawMessage) error
 
+// Queue is the slice of *store.Store the worker drives, so tests can fake it.
+type Queue interface {
+	ClaimNextJob(ctx context.Context) (*domain.Job, error)
+	CompleteJob(ctx context.Context, id uuid.UUID) error
+	FailJob(ctx context.Context, id uuid.UUID, msg string) error
+}
+
 type Worker struct {
-	store    *store.Store
+	store    Queue
 	handlers map[string]Handler
 	interval time.Duration
 }
 
-func NewWorker(s *store.Store, pollInterval time.Duration) *Worker {
+func NewWorker(s Queue, pollInterval time.Duration) *Worker {
 	return &Worker{store: s, handlers: map[string]Handler{}, interval: pollInterval}
 }
 

@@ -18,7 +18,10 @@ import (
 )
 
 type Server struct {
-	store    *store.Store
+	store *store.Store
+	// members is store, narrowed to what the access helpers read, so they can be
+	// tested against a fake without a database.
+	members  memberStore
 	cfg      config.Config
 	resolver *decklist.Resolver
 	images   *images.Cache
@@ -27,6 +30,7 @@ type Server struct {
 func New(s *store.Store, cfg config.Config, resolver *decklist.Resolver, imgs *images.Cache) *Server {
 	return &Server{
 		store:    s,
+		members:  s,
 		cfg:      cfg,
 		resolver: resolver,
 		images:   imgs,

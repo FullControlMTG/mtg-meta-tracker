@@ -116,14 +116,14 @@ set. Verify against `git status` before relying on this list.
 entire record, so every card-level winrate rests on that attribution. This is the
 root cause behind the removed statistics and the top roadmap item.
 
-**Almost no database tests.** `httpapi/` is untested and `store/` has only the
-membership tests (`membership_db_test.go`) and the migration tests
-(`migrate_db_test.go`). Those need a Postgres and skip unless
-`TEST_DATABASE_URL` is set, so `make test` still requires no Postgres. CI does not
-set it yet, which means SQL changes stay unverified until run against a real
-database.
-Current test files: `analytics` (10), `scryfall` (9), `decklist` (6), `domain` (4),
-`ingest` (4), `auth` (2), `images` (2), `httpapi` (2), `moxfield` (1).
+**Database tests cover only the critical paths.** They need a Postgres and skip
+unless `TEST_DATABASE_URL` is set, so `make test` still requires none; `make
+test-db` and the Jenkins Integration Tests stage set it. They cover migrations, the
+cube access boundary (`store/membership_db_test.go`), and decklist create → record →
+analytics run (`analytics/engine_db_test.go`). Most other SQL — combos, card
+lookups, cube sync, the analytics read views — is still only exercised by hand.
+HTTP handlers beyond the access helpers have no tests. Dump/restore round-trips
+are not tested yet; that belongs with the restore tool.
 
 **No frontend tests.** None exist. `npx tsc --noEmit` is the only frontend check.
 

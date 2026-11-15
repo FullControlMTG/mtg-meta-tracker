@@ -38,8 +38,8 @@ Phases 0–5 of the build plan are complete and Phase 6 (polish) is partly done
    currently per deck, so a card's winrate is its deck's winrate. Recording
    results per game is what would make a defensible card-power signal possible at
    all.
-2. Test coverage for `store/` and `httpapi/` — currently untested, because all
-   existing tests are pure units that need no database.
+2. Wider test coverage for `store/` SQL and `httpapi/` handlers. DB tests run in
+   CI but deliberately cover only the critical paths.
 3. Frontend tests — there are none.
 4. Wire up the frontend `lint` script, which is presently a no-op.
 5. Google OAuth (OIDC). The `oauth_accounts` table and `GOOGLE_*` config exist; no
