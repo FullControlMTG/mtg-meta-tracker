@@ -42,7 +42,7 @@ Inside `backend/internal/`:
 appctx/         Caller context: public vs authenticated, plus role.
 config/         Env-var config loading.
 domain/         Core types: the WUBRG color bitset, enums, deck models.
-store/          pgx repositories, hand-written SQL. schema.sql lives here.
+store/          pgx repositories, hand-written SQL. migrations/ lives here.
 auth/           argon2id passwords, server-side sessions, middleware.
 httpapi/        chi router + handlers. server.go is the route source of truth.
 scryfall/       Batched card client resolving exact printings.
@@ -62,6 +62,8 @@ make db-up      # Postgres on :5432 via docker-compose.dev.yml
 make backend    # API on :8080 (go run ./cmd/server)
 make frontend   # Next.js on :3000, proxies /api -> :8080
 make test       # go vet ./... && go test ./... — no database required
+                # DB tests skip unless TEST_DATABASE_URL is set; each runs in
+                # its own throwaway Postgres schema, so the dev db is safe to use
 make db-down    # stop Postgres (ARGS=-v also drops the data volume)
 make db-dump    # dev db -> db/dump.sql (gitignored)
 make db-restore FILE=db/dump.sql
@@ -128,11 +130,11 @@ directly to `main`.
 
 ## Three constraints that break things silently
 
-1. **`backend/internal/store/schema.sql` is applied on every boot.** It is
-   embedded in the binary and re-run by `store.EnsureSchema` at startup. There is
-   no migration tool and no version table. A statement that fails against a
-   populated database stops the server from starting. See
-   [DESIGN.md](DESIGN.md#schema-as-boot-time-idempotent-sql).
+1. **Schema changes are append-only migrations.** Files in
+   `backend/internal/store/migrations/` are applied once each, in order, by
+   `store.Migrate` at startup, and recorded in `schema_migrations`. Never edit a
+   shipped file; add the next number. A failing file stops the server from
+   starting. See [DESIGN.md](DESIGN.md#schema-as-versioned-migrations).
 2. **A family of derived statistics was deliberately deleted** (commit `b483fbb`)
    and must not be reintroduced. See [GOALS.md](GOALS.md#non-goals).
 3. **Deck color inference exists in two copies** — `scryfall.castColors` in Go and
