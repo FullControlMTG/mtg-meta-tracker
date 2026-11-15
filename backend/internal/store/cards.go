@@ -305,7 +305,7 @@ func (s *Store) ListDecksWithCard(ctx context.Context, cubeID, cardID uuid.UUID)
 		FROM decklist_cards dc
 		JOIN decklists d ON d.id = dc.decklist_id
 		LEFT JOIN users u ON u.id = d.user_id
-		WHERE d.cube_id=$1 AND dc.card_id=$2
+		WHERE `+deckInCube+` AND dc.card_id=$2
 		  AND d.status IN ('active','archived') AND dc.is_resolved AND dc.board='main'
 		ORDER BY d.games_played DESC, d.created_at DESC`, cubeID, cardID)
 	if err != nil {

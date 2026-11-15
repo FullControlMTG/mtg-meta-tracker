@@ -167,7 +167,7 @@ carry a `Co-Authored-By:` trailer.
   exports.
 - One mobile breakpoint: `max-width: 640px`, at the bottom of `globals.css`.
 
-## Three constraints that break things silently
+## Constraints that break things silently
 
 1. **Schema changes are append-only migrations.** Files in
    `backend/internal/store/migrations/` are applied once each, in order, by
@@ -178,6 +178,10 @@ carry a `Co-Authored-By:` trailer.
    and must not be reintroduced. See [GOALS.md](GOALS.md#non-goals).
 3. **Deck color inference exists in two copies** — `scryfall.castColors` in Go and
    `store.castColorCol` in SQL. Change both. See [GLOSSARY.md](GLOSSARY.md).
+4. **Decks are not owned by cubes.** There is no `decklists.cube_id`: a cube's
+   decks are the ones whose `tags` hold its `deck_tag`. Filter with
+   `store.deckInCube`, which also treats a deck in several cubes correctly. See
+   [DESIGN.md](DESIGN.md#decks-are-the-unit-cubes-select-them-by-tag).
 
 ## Other files here
 

@@ -9,14 +9,23 @@ import (
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
 )
 
-const decklistCols = `id, cube_id, user_id, name, description, color_identity, splash_colors, archetype,
+// deckInCube filters decklists aliased d to the cube whose id is $1. A deck is filed
+// under a cube by carrying its deck_tag (migration 0002), not by a column, so this
+// is the one place that says how; the GIN index on tags serves it.
+const deckInCube = `d.tags @> ARRAY[(SELECT deck_tag FROM cubes WHERE id=$1)]`
+
+// decklistCols reads from decklists aliased d. cube_id is derived: the oldest cube
+// whose tag the deck carries, which today is the only one.
+const decklistCols = `d.id,
+	(SELECT c.id FROM cubes c WHERE c.deck_tag = ANY(d.tags) ORDER BY c.created_at, c.id LIMIT 1),
+	d.format, d.tags, d.user_id, name, description, color_identity, splash_colors, archetype,
 	source_url, decklist_raw, card_count, status, played_at,
 	games_played, wins, losses, event_name, record_updated_at,
 	winrate, created_at, updated_at`
 
 func scanDecklist(row pgx.Row) (*domain.Decklist, error) {
 	var d domain.Decklist
-	err := row.Scan(&d.ID, &d.CubeID, &d.UserID, &d.Name, &d.Description, &d.ColorIdentity,
+	err := row.Scan(&d.ID, &d.CubeID, &d.Format, &d.Tags, &d.UserID, &d.Name, &d.Description, &d.ColorIdentity,
 		&d.SplashColors, &d.Archetype, &d.SourceURL, &d.DecklistRaw, &d.CardCount, &d.Status,
 		&d.PlayedAt, &d.GamesPlayed, &d.Wins, &d.Losses, &d.EventName,
 		&d.RecordUpdatedAt, &d.Winrate, &d.CreatedAt, &d.UpdatedAt)
@@ -35,7 +44,7 @@ type DecklistFilter struct {
 // ListCubeDecklistIDs returns the IDs of every decklist in a cube. Used to
 // target on-demand revalidation of the affected deck detail pages.
 func (s *Store) ListCubeDecklistIDs(ctx context.Context, cubeID uuid.UUID) ([]uuid.UUID, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id FROM decklists WHERE cube_id=$1`, cubeID)
+	rows, err := s.pool.Query(ctx, `SELECT d.id FROM decklists d WHERE `+deckInCube, cubeID)
 	if err != nil {
 		return nil, err
 	}
@@ -61,14 +70,20 @@ func (s *Store) CreateDecklist(ctx context.Context, d *domain.Decklist, cards []
 
 	// played_at is NOT NULL DEFAULT CURRENT_DATE, but the caller always supplies it —
 	// the server's today is not the uploader's today once they are timezones apart.
+	// d.CubeID files the deck under that cube: its deck_tag joins d.Tags.
+	tags := d.Tags
+	if tags == nil {
+		tags = []string{}
+	}
 	err = tx.QueryRow(ctx, `
-		INSERT INTO decklists (cube_id, user_id, name, description, color_identity, splash_colors,
-			archetype, source_url, decklist_raw, card_count, status, played_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-		RETURNING id, played_at, winrate, created_at, updated_at`,
-		d.CubeID, d.UserID, d.Name, d.Description, d.ColorIdentity, d.SplashColors, d.Archetype,
-		d.SourceURL, d.DecklistRaw, d.CardCount, d.Status, d.PlayedAt,
-	).Scan(&d.ID, &d.PlayedAt, &d.Winrate, &d.CreatedAt, &d.UpdatedAt)
+		INSERT INTO decklists (tags, format, user_id, name, description, color_identity,
+			splash_colors, archetype, source_url, decklist_raw, card_count, status, played_at)
+		VALUES ($2::text[] || coalesce((SELECT ARRAY[deck_tag] FROM cubes WHERE id=$1), '{}'),
+			$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+		RETURNING id, tags, played_at, winrate, created_at, updated_at`,
+		d.CubeID, tags, d.Format, d.UserID, d.Name, d.Description, d.ColorIdentity, d.SplashColors,
+		d.Archetype, d.SourceURL, d.DecklistRaw, d.CardCount, d.Status, d.PlayedAt,
+	).Scan(&d.ID, &d.Tags, &d.PlayedAt, &d.Winrate, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		return err
 	}
@@ -93,15 +108,15 @@ func insertDecklistCards(ctx context.Context, tx pgx.Tx, decklistID uuid.UUID, c
 }
 
 func (s *Store) GetDecklist(ctx context.Context, id uuid.UUID) (*domain.Decklist, error) {
-	return scanDecklist(s.pool.QueryRow(ctx, `SELECT `+decklistCols+` FROM decklists WHERE id=$1`, id))
+	return scanDecklist(s.pool.QueryRow(ctx, `SELECT `+decklistCols+` FROM decklists d WHERE d.id=$1`, id))
 }
 
 func (s *Store) ListDecklists(ctx context.Context, f DecklistFilter) ([]domain.Decklist, error) {
 	// Most recently played first. played_at is the deck's own date and the column the
 	// tables show, so ordering by it keeps the unsorted view and the Date column
 	// telling the same story; created_at breaks ties within a day.
-	q := `SELECT ` + decklistCols + ` FROM decklists WHERE ($1::uuid IS NULL OR cube_id=$1)
-		AND ($2::uuid IS NULL OR user_id=$2) ORDER BY played_at DESC, created_at DESC`
+	q := `SELECT ` + decklistCols + ` FROM decklists d WHERE ($1::uuid IS NULL OR ` + deckInCube + `)
+		AND ($2::uuid IS NULL OR d.user_id=$2) ORDER BY d.played_at DESC, d.created_at DESC`
 	rows, err := s.pool.Query(ctx, q, f.CubeID, f.UserID)
 	if err != nil {
 		return nil, err
@@ -236,7 +251,7 @@ func (s *Store) RecomputeDeckColors(ctx context.Context, cubeID uuid.UUID) (int,
 		FROM decklist_cards dc
 		JOIN decklists d ON d.id = dc.decklist_id
 		JOIN cards c ON c.scryfall_id = dc.card_id
-		WHERE d.cube_id=$1 AND dc.is_resolved AND dc.board='main'`, cubeID)
+		WHERE `+deckInCube+` AND dc.is_resolved AND dc.board='main'`, cubeID)
 	if err != nil {
 		return 0, err
 	}

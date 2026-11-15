@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/appctx"
+	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
 )
 
 type fakeMembers struct {
@@ -129,5 +130,38 @@ func TestCubeParamAccess(t *testing.T) {
 	w = httptest.NewRecorder()
 	if _, ok := accessServer(nil).cubeParamAccess(w, asCaller(outsiderID, appctx.RoleUser, "/?cube="+cube.String())); ok || w.Code != http.StatusNotFound {
 		t.Fatalf("outsider: ok=%v status=%d, want 404", ok, w.Code)
+	}
+}
+
+// A deck in a cube reads through that cube's membership. One in no cube — its cube
+// was deleted — has no members to ask, so only its owner and admins see it.
+func TestRequireDeckAccess(t *testing.T) {
+	cube := uuid.New()
+	inCube := &domain.Decklist{CubeID: &cube, UserID: outsiderID}
+	orphan := &domain.Decklist{UserID: memberID}
+	cases := []struct {
+		name   string
+		deck   *domain.Decklist
+		caller uuid.UUID
+		role   appctx.Role
+		ok     bool
+	}{
+		{"cube member", inCube, memberID, appctx.RoleUser, true},
+		// Owning the deck does not get a non-member into the cube's decks.
+		{"deck owner outside the cube", inCube, outsiderID, appctx.RoleUser, false},
+		{"orphan's owner", orphan, memberID, appctx.RoleUser, true},
+		{"orphan, someone else", orphan, ownerID, appctx.RoleUser, false},
+		{"orphan, admin", orphan, adminID, appctx.RoleAdmin, true},
+	}
+	for _, tc := range cases {
+		w := httptest.NewRecorder()
+		ok := accessServer(nil).requireDeckAccess(w, asCaller(tc.caller, tc.role, "/"), tc.deck)
+		want := http.StatusOK
+		if !tc.ok {
+			want = http.StatusNotFound
+		}
+		if ok != tc.ok || w.Code != want {
+			t.Errorf("%s: ok=%v status=%d, want ok=%v status=%d", tc.name, ok, w.Code, tc.ok, want)
+		}
 	}
 }

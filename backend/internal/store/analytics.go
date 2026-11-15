@@ -30,9 +30,9 @@ func (s *Store) SetAnalyticsRunFailed(ctx context.Context, runID uuid.UUID) erro
 
 func (s *Store) LoadDecksForAnalytics(ctx context.Context, cubeID uuid.UUID) ([]model.DeckRow, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, color_identity, splash_colors, played_at, games_played, wins, losses
-		FROM decklists WHERE cube_id=$1 AND status IN ('active','archived')
-		ORDER BY played_at`, cubeID)
+		SELECT d.id, d.color_identity, d.splash_colors, d.played_at, d.games_played, d.wins, d.losses
+		FROM decklists d WHERE `+deckInCube+` AND d.status IN ('active','archived')
+		ORDER BY d.played_at`, cubeID)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func (s *Store) LoadDeckCardsForAnalytics(ctx context.Context, cubeID uuid.UUID)
 		FROM decklist_cards dc
 		JOIN decklists d ON d.id = dc.decklist_id
 		JOIN cards c ON c.scryfall_id = dc.card_id
-		WHERE d.cube_id=$1 AND d.status IN ('active','archived')
+		WHERE `+deckInCube+` AND d.status IN ('active','archived')
 		  AND dc.is_resolved AND dc.board='main'`, cubeID)
 	if err != nil {
 		return nil, err

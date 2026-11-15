@@ -37,7 +37,10 @@ func legacySource(t *testing.T) (*Store, string) {
 		INSERT INTO cubes (name, owner_id) SELECT 'vintage', id FROM users WHERE username = 'owner';
 		INSERT INTO cube_members (cube_id, user_id) SELECT c.id, u.id FROM cubes c, users u;
 		INSERT INTO cards (scryfall_id, name) VALUES
-			('11111111-1111-1111-1111-111111111111', 'Jace, the Mind Sculptor');`); err != nil {
+			('11111111-1111-1111-1111-111111111111', 'Jace, the Mind Sculptor');
+		-- A deck linked to its cube by the cube_id column that 0002 replaces with a tag.
+		INSERT INTO decklists (cube_id, user_id, name, decklist_raw)
+			SELECT c.id, u.id, 'Burn', '4 Lightning Bolt' FROM cubes c, users u WHERE u.username = 'owner';`); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	var schema string
@@ -74,6 +77,24 @@ func checkReimported(t *testing.T, dst *Store, report *ReimportReport) {
 	}
 	if _, ok := byTable["schema_migrations"]; ok {
 		t.Error("schema_migrations was copied")
+	}
+	if report.UpgradeError != "" || len(report.Upgraded) == 0 {
+		t.Errorf("dump upgrade: applied %v, error %q; want every migration, no error",
+			report.Upgraded, report.UpgradeError)
+	}
+	// The dump is migrated before the copy, so the cube link moves into the tags
+	// instead of being dropped as a column the schema no longer has.
+	if dl := byTable["decklists"]; dl.Copied != 1 || len(dl.DroppedColumns) != 0 {
+		t.Errorf("decklists: copied %d, dropped %v; want 1 row, no columns", dl.Copied, dl.DroppedColumns)
+	}
+	var inCube bool
+	if err := dst.pool.QueryRow(ctx, `
+		SELECT d.tags = ARRAY[c.deck_tag] AND d.format = 'cube' FROM decklists d, cubes c`,
+	).Scan(&inCube); err != nil {
+		t.Fatal(err)
+	}
+	if !inCube {
+		t.Error("reimported deck is not filed under its cube")
 	}
 
 	var usernames []string

@@ -69,7 +69,7 @@ func TestDecklistToAnalyticsRun(t *testing.T) {
 
 	// Saved with no colors, as a deck from before color inference would be.
 	deck := &domain.Decklist{
-		CubeID: cube.ID, UserID: user.ID, Name: "Burn", DecklistRaw: "4 Lightning Bolt\n16 Mountain",
+		CubeID: &cube.ID, UserID: user.ID, Name: "Burn", DecklistRaw: "4 Lightning Bolt\n16 Mountain",
 		CardCount: 20, Status: domain.StatusActive, PlayedAt: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC),
 	}
 	cards := []domain.DecklistCard{

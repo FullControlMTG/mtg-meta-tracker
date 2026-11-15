@@ -69,7 +69,8 @@ Note that `docker-compose.yml` is the **production** deployment (Traefik, a NAS 
 mount for Postgres, a Docker volume for the card-image cache, no published DB port)
 and is not usable for local dev — `make db-up` uses `docker-compose.dev.yml` instead.
 Jenkins dumps the prod database to `/pwspool/software/mtg-meta-tracker/dump/` before
-every deploy and keeps the newest 30 (see `.claude/DESIGN.md`, "Deployment"). To
+every deploy and keeps the newest 30 (see `.claude/DESIGN.md`, "Deployment"; "Taking
+a dump by hand" has the command for an ad-hoc one). To
 flash the database from one, whatever schema wrote it, run
 `docker compose run --rm backend restore --file /dumps/<file>.dump` with the backend
 stopped, or use the admin `POST /api/admin/db/restore` API (`.claude/DESIGN.md`,

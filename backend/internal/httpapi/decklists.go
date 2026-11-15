@@ -15,7 +15,12 @@ import (
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/store"
 )
 
+// enqueueRecompute refreshes a cube's analytics. uuid.Nil — a deck filed under no
+// cube — has none to refresh.
 func (s *Server) enqueueRecompute(r *http.Request, cubeID uuid.UUID, trigger string) {
+	if cubeID == uuid.Nil {
+		return
+	}
 	_ = s.store.EnqueueJob(r.Context(), "recompute_analytics",
 		map[string]string{"cube_id": cubeID.String(), "trigger": trigger},
 		"recompute:"+cubeID.String())
@@ -31,7 +36,7 @@ func (s *Server) decklistView(r *http.Request, d *domain.Decklist) map[string]an
 	}
 	// Main board only, like colors and card stats: a piece sitting in the
 	// sideboard is not a combo the deck can assemble.
-	combos, _ := s.store.MatchCombos(r.Context(), d.CubeID, ids)
+	combos, _ := s.store.MatchCombos(r.Context(), deckCube(d), ids)
 	view := map[string]any{
 		"decklist":      d,
 		"color_string":  domain.ColorIdentity(d.ColorIdentity).String(),
@@ -171,7 +176,7 @@ func (s *Server) handleGetDecklist(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, statusForStoreErr(err), "decklist not found")
 		return
 	}
-	if !s.requireCubeAccess(w, r, d.CubeID) {
+	if !s.requireDeckAccess(w, r, d) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.decklistView(r, d))
@@ -243,8 +248,10 @@ func (s *Server) handleCreateDecklist(w http.ResponseWriter, r *http.Request) {
 		writeAPIErr(w, err)
 		return
 	}
+	format := domain.FormatCube
 	d := &domain.Decklist{
-		CubeID:        cubeID,
+		CubeID:        &cubeID,
+		Format:        &format,
 		UserID:        ownerID,
 		Name:          req.Name,
 		ColorIdentity: resolved.ColorIdentity,
@@ -326,7 +333,7 @@ func (s *Server) handlePatchDecklist(w http.ResponseWriter, r *http.Request) {
 	}
 	prevOwner := d.UserID
 	if req.UserID != nil {
-		owner, err := s.resolveOwner(r, d.CubeID, *req.UserID, d.UserID)
+		owner, err := s.resolveOwner(r, deckCube(d), *req.UserID, d.UserID)
 		if err != nil {
 			writeAPIErr(w, err)
 			return
@@ -378,7 +385,13 @@ func (s *Server) handlePatchDecklist(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "decklist_raw cannot be empty")
 			return
 		}
-		resolved, err := s.resolver.Resolve(r.Context(), d.CubeID, decklist.ParseList(*req.DecklistRaw))
+		// Cards resolve against a cube's pool; with no cube every name would come
+		// back unresolved and the saved list would silently lose its cards.
+		if d.CubeID == nil {
+			writeErr(w, http.StatusConflict, "deck is not in a cube; its list cannot be re-resolved")
+			return
+		}
+		resolved, err := s.resolver.Resolve(r.Context(), *d.CubeID, decklist.ParseList(*req.DecklistRaw))
 		if err != nil {
 			writeErr(w, http.StatusBadGateway, "could not resolve cards: "+err.Error())
 			return
@@ -395,7 +408,7 @@ func (s *Server) handlePatchDecklist(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, statusForStoreErr(err), "could not update decklist")
 		return
 	}
-	s.enqueueRecompute(r, d.CubeID, "deck_updated")
+	s.enqueueRecompute(r, deckCube(d), "deck_updated")
 	s.revalidateOwnerChange(r, prevOwner, d.UserID)
 	writeJSON(w, http.StatusOK, withUnresolved(s.decklistView(r, d), unresolved))
 }
@@ -436,7 +449,7 @@ func (s *Server) handlePatchDecklistRecord(w http.ResponseWriter, r *http.Reques
 		writeErr(w, statusForStoreErr(err), "could not update record")
 		return
 	}
-	s.enqueueRecompute(r, d.CubeID, "record_updated")
+	s.enqueueRecompute(r, deckCube(d), "record_updated")
 	d, _ = s.store.GetDecklist(r.Context(), id)
 	writeJSON(w, http.StatusOK, s.decklistView(r, d))
 }
@@ -460,11 +473,14 @@ func (s *Server) handleDeleteDecklist(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, statusForStoreErr(err), "could not delete decklist")
 		return
 	}
-	s.enqueueRecompute(r, d.CubeID, "deck_updated")
+	s.enqueueRecompute(r, deckCube(d), "deck_updated")
 	// The recompute's own revalidation derives its paths from the cube's decklists,
 	// which no longer include this one, so the deck's page and its owner's profile
 	// (both ISR, revalidate = 3600) would keep serving the deleted deck for an hour.
-	paths := []string{"/cube/" + d.CubeID.String() + "/decks/" + id.String()}
+	var paths []string
+	if d.CubeID != nil {
+		paths = append(paths, "/cube/"+d.CubeID.String()+"/decks/"+id.String())
+	}
 	if u, err := s.store.GetUserByID(r.Context(), d.UserID); err == nil {
 		paths = append(paths, "/users/"+u.Username)
 	}
@@ -590,6 +606,14 @@ func validArchetype(s string) bool {
 		return true
 	}
 	return false
+}
+
+// deckCube is the cube a deck is filed under, or uuid.Nil when it is in none.
+func deckCube(d *domain.Decklist) uuid.UUID {
+	if d.CubeID == nil {
+		return uuid.Nil
+	}
+	return *d.CubeID
 }
 
 func countMain(cards []domain.DecklistCard) int {

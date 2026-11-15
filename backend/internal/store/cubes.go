@@ -10,11 +10,11 @@ import (
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
 )
 
-const cubeCols = `id, name, owner_id, moxfield_public_id, description, card_list, content_hash, last_synced_at, created_at`
+const cubeCols = `id, name, owner_id, moxfield_public_id, description, card_list, deck_tag, content_hash, last_synced_at, created_at`
 
 func scanCube(row pgx.Row) (*domain.Cube, error) {
 	var c domain.Cube
-	err := row.Scan(&c.ID, &c.Name, &c.OwnerID, &c.MoxfieldPublicID, &c.Description, &c.CardList, &c.ContentHash, &c.LastSyncedAt, &c.CreatedAt)
+	err := row.Scan(&c.ID, &c.Name, &c.OwnerID, &c.MoxfieldPublicID, &c.Description, &c.CardList, &c.DeckTag, &c.ContentHash, &c.LastSyncedAt, &c.CreatedAt)
 	if err != nil {
 		return nil, normErr(err)
 	}
@@ -31,9 +31,9 @@ func (s *Store) CreateCube(ctx context.Context, c *domain.Cube) error {
 	defer func() { _ = tx.Rollback(ctx) }()
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO cubes (name, owner_id, moxfield_public_id, description, card_list)
-		VALUES ($1,$2,$3,$4,$5) RETURNING id, created_at`,
+		VALUES ($1,$2,$3,$4,$5) RETURNING id, deck_tag, created_at`,
 		c.Name, c.OwnerID, c.MoxfieldPublicID, c.Description, c.CardList,
-	).Scan(&c.ID, &c.CreatedAt); err != nil {
+	).Scan(&c.ID, &c.DeckTag, &c.CreatedAt); err != nil {
 		return err
 	}
 	if c.OwnerID != nil {
@@ -109,6 +109,9 @@ func (s *Store) UpdateCube(ctx context.Context, c *domain.Cube) error {
 	return nil
 }
 
+// DeleteCube removes a cube and everything it owns — pool, members, combos, runs.
+// Its decks are not its own and survive, filed under no cube unless another
+// collection's tag still selects them.
 func (s *Store) DeleteCube(ctx context.Context, id uuid.UUID) error {
 	ct, err := s.pool.Exec(ctx, `DELETE FROM cubes WHERE id=$1`, id)
 	if err != nil {
