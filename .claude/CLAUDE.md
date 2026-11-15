@@ -54,6 +54,7 @@ analytics/      Recompute engine (compute.go) + model/ leaf package.
 jobs/           Queue, worker, scheduler.
 dbrestore/      Admin restore API's runner (dump listing, maintenance).
 revalidate/     Client for the Next.js revalidation webhook.
+testdb/         Per-test Postgres schema for DB tests (TEST_DATABASE_URL).
 ```
 
 ## Commands
@@ -65,6 +66,7 @@ make frontend   # Next.js on :3000, proxies /api -> :8080
 make test       # go vet ./... && go test ./... — no database required
                 # DB tests skip unless TEST_DATABASE_URL is set; each runs in
                 # its own throwaway Postgres schema, so the dev db is safe to use
+make test-db    # go test ./... with TEST_DATABASE_URL at the make db-up database
 make db-down    # stop Postgres (ARGS=-v also drops the data volume)
 make db-dump    # dev db -> db/dump.sql (gitignored)
 make db-restore FILE=db/dump.sql
@@ -84,6 +86,17 @@ admin — there is no public signup — seeded via the `BOOTSTRAP_ADMIN_*` env v
 
 - backend: `go vet ./... && go build ./... && go test ./...`
 - frontend: `npx tsc --noEmit`
+
+Then Integration Tests, on every branch: a throwaway `postgres:16-alpine` on a
+private Docker network, and `go test -count=1 ./...` run against it with
+`TEST_DATABASE_URL` set, so the DB tests run too; the container, network and image
+are removed whatever the result. A failing test fails the build, which on `main` is
+before anything is torn down.
+
+DB tests are scoped to the critical paths: migrations (empty database to latest,
+pre-migration schema upgraded), the cube access boundary, and decklist create →
+record → analytics run. New ones use `testdb.Pool`. Nothing in CI calls Scryfall,
+and there are no frontend E2E tests.
 
 Then Prepare Environment. Only on `main`, the `Deploy` group follows: Build
 Images (`docker compose build`, while prod still serves), Backup Database

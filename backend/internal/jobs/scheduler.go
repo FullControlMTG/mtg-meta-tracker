@@ -5,8 +5,14 @@ import (
 	"log"
 	"time"
 
-	"github.com/runyanjake/mtg-meta-tracker/backend/internal/store"
+	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
 )
+
+// CubeQueue is the slice of *store.Store the scheduler drives, so tests can fake it.
+type CubeQueue interface {
+	ListCubes(ctx context.Context) ([]domain.Cube, error)
+	EnqueueJob(ctx context.Context, jobType string, payload any, dedupKey string) error
+}
 
 // Scheduler periodically enqueues sync_cube jobs for every cube that has a
 // stored card_list. The sync_cube handler (via ingest.Syncer) does content-hash
@@ -14,11 +20,11 @@ import (
 // mainly self-heals cubes whose last resolve failed. The "sync_cube:<id>" dedup
 // key means a still-pending sync is never duplicated.
 type Scheduler struct {
-	store    *store.Store
+	store    CubeQueue
 	interval time.Duration
 }
 
-func NewScheduler(s *store.Store, interval time.Duration) *Scheduler {
+func NewScheduler(s CubeQueue, interval time.Duration) *Scheduler {
 	return &Scheduler{store: s, interval: interval}
 }
 

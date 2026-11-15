@@ -2,52 +2,16 @@ package store
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"testing"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
+	"github.com/runyanjake/mtg-meta-tracker/backend/internal/testdb"
 )
 
-// testPool connects to TEST_DATABASE_URL and isolates the test in a throwaway, empty
-// Postgres schema, so it can share a database with dev data without touching it.
-// Unset, the test skips: `make test` stays runnable with no database.
-func testPool(t *testing.T) *pgxpool.Pool {
-	t.Helper()
-	url := os.Getenv("TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("TEST_DATABASE_URL not set")
-	}
-	ctx := context.Background()
-	name := fmt.Sprintf("test_%d", time.Now().UnixNano())
-
-	admin, err := pgxpool.New(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := admin.Exec(ctx, "CREATE SCHEMA "+name); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		_, _ = admin.Exec(context.Background(), "DROP SCHEMA "+name+" CASCADE")
-		admin.Close()
-	})
-
-	cfg, err := pgxpool.ParseConfig(url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg.ConnConfig.RuntimeParams["search_path"] = name + ",public"
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(pool.Close)
-	return pool
-}
+// testPool is a migration-free, per-test Postgres schema; see testdb.Pool.
+func testPool(t *testing.T) *pgxpool.Pool { return testdb.Pool(t) }
 
 // testStore is testPool migrated to the latest schema.
 func testStore(t *testing.T) *Store {
@@ -139,5 +103,97 @@ func TestAcceptInviteEnrollsOnlyInvitee(t *testing.T) {
 	}
 	if ok, _ := st.IsCubeMember(ctx, cube.ID, invitee.ID); !ok {
 		t.Fatal("invitee is not a member after accepting")
+	}
+}
+
+// The cube boundary end to end: the owner administers, a member reads, an outsider
+// sees nothing, an admin sees everything, and a declined invite lets no one in.
+func TestCubeAccessBoundary(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+
+	admin := mustUser(t, st, "admin", domain.RoleAdmin)
+	owner := mustUser(t, st, "owner", "user")
+	member := mustUser(t, st, "member", "user")
+	decliner := mustUser(t, st, "decliner", "user")
+	outsider := mustUser(t, st, "outsider", "user")
+
+	cube := &domain.Cube{Name: "private", OwnerID: &owner.ID}
+	if err := st.CreateCube(ctx, cube); err != nil {
+		t.Fatal(err)
+	}
+	accept, err := st.CreateInvite(ctx, cube.ID, member.ID, owner.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AcceptInvite(ctx, accept); err != nil {
+		t.Fatal(err)
+	}
+	// An invite is spent once answered.
+	if err := st.AcceptInvite(ctx, accept); err != ErrNotFound {
+		t.Fatalf("re-accepting an invite: err=%v, want ErrNotFound", err)
+	}
+	decline, err := st.CreateInvite(ctx, cube.ID, decliner.ID, owner.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DeclineInvite(ctx, decline); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AcceptInvite(ctx, decline); err != ErrNotFound {
+		t.Fatalf("accepting a declined invite: err=%v, want ErrNotFound", err)
+	}
+
+	for _, tc := range []struct {
+		user          *domain.User
+		member, owner bool
+	}{
+		{owner, true, true},
+		{member, true, false},
+		{decliner, false, false},
+		{outsider, false, false},
+		// Admins bypass membership in the HTTP layer; the store must not enroll them.
+		{admin, false, false},
+	} {
+		isMember, err := st.IsCubeMember(ctx, cube.ID, tc.user.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		isOwner, err := st.IsCubeOwner(ctx, cube.ID, tc.user.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if isMember != tc.member || isOwner != tc.owner {
+			t.Errorf("%s: member=%v owner=%v, want member=%v owner=%v",
+				tc.user.Username, isMember, isOwner, tc.member, tc.owner)
+		}
+	}
+
+	visible := func(u *domain.User, isAdmin bool) int {
+		cubes, err := st.ListCubesForUser(ctx, u.ID, isAdmin)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(cubes)
+	}
+	if n := visible(member, false); n != 1 {
+		t.Errorf("member sees %d cubes, want 1", n)
+	}
+	if n := visible(outsider, false); n != 0 {
+		t.Errorf("outsider sees %d cubes, want 0", n)
+	}
+	if n := visible(admin, true); n != 1 {
+		t.Errorf("admin sees %d cubes, want 1", n)
+	}
+
+	// Ownership is transferred, never abandoned.
+	if err := st.RemoveCubeMember(ctx, cube.ID, owner.ID); err != ErrConflict {
+		t.Fatalf("removing the owner: err=%v, want ErrConflict", err)
+	}
+	if err := st.RemoveCubeMember(ctx, cube.ID, member.ID); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := st.IsCubeMember(ctx, cube.ID, member.ID); ok {
+		t.Fatal("removed member still has access")
 	}
 }

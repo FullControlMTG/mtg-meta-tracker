@@ -1,4 +1,4 @@
-.PHONY: db-up db-down db-dump db-restore db-schema backend frontend test dev
+.PHONY: db-up db-down db-dump db-restore db-schema backend frontend test test-db dev
 
 # Local dev talks to docker-compose.dev.yml (published port, named volume).
 # docker-compose.yml is the production deployment and is not usable locally.
@@ -30,6 +30,11 @@ frontend:     ## run Next.js on :3000, proxying /api -> :8080
 
 test:         ## vet + unit tests (no database needed)
 	cd backend && go vet ./... && go test ./...
+
+test-db:      ## the same suite plus the DB tests, against the make db-up database
+	# Each DB test works in its own throwaway schema, so the dev data is untouched.
+	# -count=1: a cached pass says nothing about the database as it is now.
+	cd backend && TEST_DATABASE_URL=postgres://mtg:mtg@localhost:5432/mtg_meta?sslmode=disable go test -count=1 ./...
 
 dev: db-up
 	@echo "run 'make backend' and 'make frontend' in separate shells"

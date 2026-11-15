@@ -53,6 +53,7 @@ Then sign in at http://localhost:3000 as that admin and paste a cube list at
 
 ```sh
 make test                       # go vet ./... && go test ./... (no database needed)
+make test-db                    # the same plus the DB tests, against make db-up
 cd frontend && npx tsc --noEmit # type-check the frontend, as CI does
 ```
 

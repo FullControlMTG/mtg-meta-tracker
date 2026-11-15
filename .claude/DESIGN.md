@@ -580,8 +580,8 @@ one a reader came for. Legend and tooltip follow the same order.
 ## Deployment
 
 Jenkins deploys `main` to one host with `docker compose` (`Jenkinsfile`,
-`docker-compose.yml`). Checkout, Preflight, Lint & Type-check and Prepare
-Environment run on every branch; everything after them is one `Deploy` stage
+`docker-compose.yml`). Checkout, Preflight, Lint & Type-check, Integration Tests
+and Prepare Environment run on every branch; everything after them is one `Deploy` stage
 group behind `isMain()`. That helper accepts `BRANCH_NAME` (multibranch jobs) or
 `GIT_BRANCH` (`origin/main`, plain pipeline jobs), because a bare
 `when { branch 'main' }` reads only `BRANCH_NAME` and would skip every deploy in a

@@ -121,6 +121,57 @@ DOCKERFILE
             }
         }
 
+        stage('Integration Tests') {
+            steps {
+                // The DB-backed tests (they skip without TEST_DATABASE_URL, so Lint &
+                // Type-check never ran them) against a throwaway Postgres on a private
+                // network. Runs on every branch, and on main before Teardown, so a
+                // failing test stops a deploy while prod is still up.
+                //
+                // As in Lint & Type-check, the source travels as a build context rather
+                // than a bind mount. BuildKit cannot join a custom network during
+                // `docker build`, so the image only carries the code and `docker run`
+                // executes the tests on the network.
+                sh '''
+                    set -eu
+                    id="mtg-it-$(date +%s)-$$"
+                    cleanup() {
+                        docker rm -f "$id-db" >/dev/null 2>&1 || true
+                        docker network rm "$id" >/dev/null 2>&1 || true
+                        docker image rm -f "$id" >/dev/null 2>&1 || true
+                    }
+                    trap cleanup EXIT
+
+                    docker network create --internal "$id" >/dev/null
+                    docker run -d --name "$id-db" --network "$id" --network-alias db \
+                        -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test -e POSTGRES_DB=test \
+                        postgres:16-alpine >/dev/null
+
+                    docker build --rm -t "$id" -f - backend <<'DOCKERFILE'
+FROM golang:1.22-alpine
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN go test -run '^$' ./...
+DOCKERFILE
+
+                    # The image's init script runs a socket-only server first, so a
+                    # TCP probe only passes once the real server is up.
+                    deadline=$(( $(date +%s) + 60 ))
+                    until docker exec "$id-db" pg_isready -q -h 127.0.0.1 -U test -d test; do
+                        [ "$(date +%s)" -lt "$deadline" ] || { echo "test postgres did not become ready" >&2; docker logs "$id-db" >&2 || true; exit 1; }
+                        sleep 1
+                    done
+
+                    docker run --rm --network "$id" \
+                        -e TEST_DATABASE_URL='postgres://test:test@db:5432/test?sslmode=disable' \
+                        "$id" go test -count=1 ./... \
+                        || { echo "integration tests failed" >&2; exit 1; }
+                '''
+            }
+        }
+
         stage('Prepare Environment') {
             steps {
                 // Generate .env before ANY compose command. The backend service
