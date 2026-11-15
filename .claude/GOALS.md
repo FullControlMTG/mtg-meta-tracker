@@ -41,9 +41,9 @@ Phases 0–5 of the build plan are complete and Phase 6 (polish) is partly done
 2. Wider test coverage for `store/` SQL and `httpapi/` handlers. DB tests run in
    CI but deliberately cover only the critical paths.
 3. Frontend tests — there are none.
-4. Wire up the frontend `lint` script, which is presently a no-op.
-5. Google OAuth (OIDC). The `oauth_accounts` table and `GOOGLE_*` config exist; no
-   route does.
+4. A frontend linter. There is none; the no-op `lint` script was removed.
+5. Google OAuth (OIDC). Only the `oauth_accounts` table exists; re-add the
+   `GOOGLE_*` config and Jenkins credentials with the route.
 
 ## Non-goals
 

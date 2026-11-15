@@ -24,10 +24,6 @@ type Config struct {
 	SessionCookieSecure bool
 	SessionTTL          time.Duration
 
-	GoogleClientID     string
-	GoogleClientSecret string
-	GoogleRedirectURL  string
-
 	ScryfallUserAgent   string
 	ScryfallMinInterval time.Duration
 
@@ -41,6 +37,10 @@ type Config struct {
 
 	// How often to poll Moxfield-backed cubes for list changes.
 	SyncInterval time.Duration
+
+	// How long finished jobs and superseded analytics runs are kept; zero or
+	// less keeps them forever.
+	Retention time.Duration
 
 	RevalidateURL    string
 	RevalidateSecret string
@@ -63,14 +63,12 @@ func Load() Config {
 		SessionCookieName:   env("SESSION_COOKIE_NAME", "mtg_session"),
 		SessionCookieSecure: envBool("SESSION_COOKIE_SECURE", true),
 		SessionTTL:          time.Duration(envInt("SESSION_TTL_HOURS", 720)) * time.Hour,
-		GoogleClientID:      env("GOOGLE_CLIENT_ID", ""),
-		GoogleClientSecret:  env("GOOGLE_CLIENT_SECRET", ""),
-		GoogleRedirectURL:   env("GOOGLE_REDIRECT_URL", ""),
 		ScryfallUserAgent:   env("SCRYFALL_USER_AGENT", "mtg-meta-tracker/0.1"),
 		ScryfallMinInterval: time.Duration(envInt("SCRYFALL_MIN_INTERVAL_MS", 100)) * time.Millisecond,
 		ImageCacheDir:       env("IMAGE_CACHE_DIR", ""),
 		DumpDir:             env("DUMP_DIR", "/dumps"),
 		SyncInterval:        time.Duration(envInt("SYNC_INTERVAL_MINUTES", 360)) * time.Minute,
+		Retention:           time.Duration(envInt("RETENTION_DAYS", 30)) * 24 * time.Hour,
 		RevalidateURL:       env("REVALIDATE_URL", ""),
 		RevalidateSecret:    env("REVALIDATE_SECRET", ""),
 		Timezone:            location(env("APP_TIMEZONE", "America/Los_Angeles")),

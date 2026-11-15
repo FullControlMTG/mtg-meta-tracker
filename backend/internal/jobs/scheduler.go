@@ -18,7 +18,8 @@ type CubeQueue interface {
 // stored card_list. The sync_cube handler (via ingest.Syncer) does content-hash
 // change detection, so an unchanged list is cheap (no Scryfall calls); this tick
 // mainly self-heals cubes whose last resolve failed. The "sync_cube:<id>" dedup
-// key means a still-pending sync is never duplicated.
+// key means a still-pending sync is never duplicated. Each tick also enqueues
+// one prune job (see Pruner).
 type Scheduler struct {
 	store    CubeQueue
 	interval time.Duration
@@ -54,6 +55,9 @@ func (sc *Scheduler) Run(ctx context.Context) {
 }
 
 func (sc *Scheduler) tick(ctx context.Context) {
+	if err := sc.store.EnqueueJob(ctx, PruneJobType, struct{}{}, PruneJobType); err != nil {
+		log.Printf("scheduler: enqueue prune: %v", err)
+	}
 	cubes, err := sc.store.ListCubes(ctx)
 	if err != nil {
 		log.Printf("scheduler: list cubes: %v", err)

@@ -66,6 +66,15 @@ func main() {
 	resolver := decklist.NewResolver(st, scry)
 	engine := analytics.NewEngine(st, cfg)
 
+	// Before the worker starts: anything still 'running' is from a dead process.
+	requeued, failed, err := st.RecoverJobs(rootCtx, jobs.MaxAttempts)
+	if err != nil {
+		log.Fatalf("recover jobs: %v", err)
+	}
+	if requeued > 0 || failed > 0 {
+		log.Printf("jobs: recovered %d interrupted job(s), failed %d", requeued, failed)
+	}
+
 	workerCtx, cancelWorker := context.WithCancel(rootCtx)
 	defer cancelWorker()
 	worker := jobs.NewWorker(st, 2*time.Second)
@@ -100,6 +109,7 @@ func main() {
 		}
 		return engine.Recompute(ctx, id, trigger)
 	})
+	worker.Register(jobs.PruneJobType, jobs.NewPruner(st, cfg.Retention).Handle)
 	go worker.Run(workerCtx)
 
 	restorer := dbrestore.NewRunner(pool, cfg.DumpDir, worker.Pause, worker.Resume)

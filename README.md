@@ -45,7 +45,7 @@ BOOTSTRAP_ADMIN_PASSWORD=devpassword123 \
 make backend
 
 # terminal 3 — :3000, proxies /api -> :8080
-cd frontend && npm install && cd .. && make frontend
+cd frontend && npm ci && cd .. && make frontend
 ```
 
 Then sign in at http://localhost:3000 as that admin and paste a cube list at

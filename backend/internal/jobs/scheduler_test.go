@@ -39,6 +39,9 @@ func (f *fakeCubes) EnqueueJob(_ context.Context, jobType string, payload any, k
 
 func ptr(s string) *string { return &s }
 
+// Every tick enqueues one prune job, coalesced on its own dedup key.
+var prune = enqueued{jobType: PruneJobType, payload: struct{}{}, key: PruneJobType}
+
 func TestTickEnqueuesOnlyCubesWithAList(t *testing.T) {
 	listed, failing := uuid.New(), uuid.New()
 	f := &fakeCubes{
@@ -52,7 +55,7 @@ func TestTickEnqueuesOnlyCubesWithAList(t *testing.T) {
 	}
 	NewScheduler(f, time.Hour).tick(context.Background())
 
-	want := []enqueued{{
+	want := []enqueued{prune, {
 		jobType: "sync_cube",
 		payload: map[string]string{"cube_id": listed.String()},
 		// The dedup key is what stops a slow sync being queued twice.
@@ -63,11 +66,12 @@ func TestTickEnqueuesOnlyCubesWithAList(t *testing.T) {
 	}
 }
 
+// Retention does not depend on the cube list, so a list error still prunes.
 func TestTickSurvivesListError(t *testing.T) {
 	f := &fakeCubes{listErr: errors.New("db down")}
 	NewScheduler(f, time.Hour).tick(context.Background())
-	if len(f.got) != 0 {
-		t.Fatalf("enqueued %v after a list error", f.got)
+	if !reflect.DeepEqual(f.got, []enqueued{prune}) {
+		t.Fatalf("enqueued %+v after a list error, want only the prune job", f.got)
 	}
 }
 

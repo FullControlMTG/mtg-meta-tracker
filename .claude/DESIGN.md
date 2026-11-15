@@ -271,11 +271,20 @@ jobs worker ──▶ analytics recompute ──▶ new run promoted to is_curre
 - `jobs(id, type, payload jsonb, status, scheduled_at, attempts, last_error,
   dedup_key)`. A worker goroutine polls every 2s and coalesces on `dedup_key`, so
   a burst of edits produces one recompute.
-- Two job types are registered in `cmd/server/main.go`: `sync_cube` and
-  `recompute_analytics`.
+- Three job types are registered in `cmd/server/main.go`: `sync_cube`,
+  `recompute_analytics` and `prune` (retention, below).
+- **Retries.** A handler error re-queues the job (`pending`, `scheduled_at`
+  pushed back 1m, then 2m) until it has run `jobs.MaxAttempts` (3) times; then it
+  stays `failed` with `last_error`. A job whose type has no handler fails at once.
+  If a newer pending job holds the same `dedup_key`, the failed one is not
+  re-queued — the newer one covers it, and the unique pending index forbids two.
+- **Recovery.** At boot, before the worker starts, `store.RecoverJobs` returns
+  rows a restart left `running` to `pending`. One already at the attempt cap, or
+  superseded by a pending job with its key, is marked `failed` instead, so a job
+  that kills the process cannot crash-loop it.
 - `internal/jobs/scheduler.go` re-enqueues `sync_cube` for every cube with a
-  `card_list`, every `SYNC_INTERVAL_MINUTES` (default 360), starting 30s after
-  boot. Because the syncer content-hashes the list, a periodic sync on an
+  `card_list`, plus one `prune` job, every `SYNC_INTERVAL_MINUTES` (default 360),
+  starting 30s after boot. Because the syncer content-hashes the list, a periodic sync on an
   unchanged cube is nearly free — its real job is to self-heal cubes whose last
   resolve failed.
 - The image-download phase runs detached from the job and reports into
@@ -317,8 +326,8 @@ GET    /api/analytics/overview|colors|color-trend|cards|pairs   (?cube= required
 Admin only (site administration): `DELETE /api/users/{id}`, `POST /api/admin/users`,
 `POST /api/admin/analytics/recompute`.
 
-Google OAuth is **not implemented**: the `GOOGLE_*` config and the `oauth_accounts`
-table exist, but no route does.
+Google OAuth is **not implemented**: only the `oauth_accounts` table exists. The
+`GOOGLE_*` config and Jenkins credentials were removed until a route needs them.
 
 ## Frontend pages
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -20,6 +21,7 @@ type fakeQueue struct {
 	claimErr error
 	done     []uuid.UUID
 	failed   map[uuid.UUID]string
+	retried  map[uuid.UUID]time.Duration
 }
 
 func (q *fakeQueue) ClaimNextJob(context.Context) (*domain.Job, error) {
@@ -47,8 +49,17 @@ func (q *fakeQueue) FailJob(_ context.Context, id uuid.UUID, msg string) error {
 	return nil
 }
 
+func (q *fakeQueue) RetryJob(_ context.Context, id uuid.UUID, _ string, delay time.Duration) error {
+	if q.retried == nil {
+		q.retried = map[uuid.UUID]time.Duration{}
+	}
+	q.retried[id] = delay
+	return nil
+}
+
+// A freshly claimed job: ClaimNextJob has already counted this attempt.
 func job(typ, payload string) *domain.Job {
-	return &domain.Job{ID: uuid.New(), Type: typ, Payload: json.RawMessage(payload)}
+	return &domain.Job{ID: uuid.New(), Type: typ, Payload: json.RawMessage(payload), Attempts: 1}
 }
 
 func TestDrainRunsEveryJobToCompletion(t *testing.T) {
@@ -71,8 +82,9 @@ func TestDrainRunsEveryJobToCompletion(t *testing.T) {
 	if !reflect.DeepEqual(q.done, []uuid.UUID{ok.ID}) {
 		t.Fatalf("completed %v, want only the ok job", q.done)
 	}
-	if q.failed[bad.ID] != "boom" {
-		t.Errorf("bad job failed with %q, want the handler's error", q.failed[bad.ID])
+	// A first failure goes back in the queue rather than failing for good.
+	if d, ok := q.retried[bad.ID]; !ok || d != time.Minute {
+		t.Errorf("bad job retried=%v delay=%s, want a retry after 1m", ok, d)
 	}
 	// A job nobody handles must fail rather than sit claimed as running forever.
 	if q.failed[unknown.ID] != "no handler for type nobody" {
@@ -90,5 +102,25 @@ func TestDrainStopsOnClaimError(t *testing.T) {
 	w.drain(context.Background())
 	if len(q.done) != 0 || len(q.failed) != 0 {
 		t.Fatalf("done %v failed %v, want nothing touched", q.done, q.failed)
+	}
+}
+
+func TestFailedJobRetriesUntilTheAttemptCap(t *testing.T) {
+	second, last := job("bad", `{}`), job("bad", `{}`)
+	second.Attempts, last.Attempts = 2, MaxAttempts
+	q := &fakeQueue{jobs: []*domain.Job{second, last}}
+	w := NewWorker(q, 0)
+	w.Register("bad", func(context.Context, json.RawMessage) error { return errors.New("boom") })
+
+	w.drain(context.Background())
+
+	if d := q.retried[second.ID]; d != 2*time.Minute {
+		t.Errorf("second attempt retried after %s, want 2m", d)
+	}
+	if _, ok := q.retried[last.ID]; ok {
+		t.Errorf("job on its last attempt was retried")
+	}
+	if q.failed[last.ID] != "boom" {
+		t.Errorf("last attempt failed with %q, want the handler's error", q.failed[last.ID])
 	}
 }
