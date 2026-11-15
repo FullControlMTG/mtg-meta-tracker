@@ -5,6 +5,7 @@ import { cubePath } from "@/lib/cube";
 import { ColorPips } from "@/components/ColorPips";
 import { CardBrowser } from "@/components/CardBrowser";
 import { ComboList } from "@/components/ComboList";
+import type { CardGroupKey } from "@/lib/colors";
 import { StatTile } from "@/components/StatTile";
 import { OwnerActions } from "@/components/OwnerActions";
 import { fmtDate, pct } from "@/lib/format";
@@ -13,11 +14,8 @@ export const revalidate = 3600;
 
 const DECK_MAX_COLS = 5;
 
-const BOARDS: { key: string; label: string }[] = [
-  { key: "main", label: "Mainboard" },
-  { key: "side", label: "Sideboard" },
-  { key: "maybe", label: "Maybeboard" },
-];
+// A deck opens in its boards, which are a fact about the deck rather than an order.
+const DECK_GROUPINGS: CardGroupKey[] = ["board", "color", "cmc", "type", "none"];
 
 export default async function DecklistDetailPage({
   params,
@@ -30,10 +28,6 @@ export default async function DecklistDetailPage({
 
   const { decklist: d, cards, user } = detail;
   const combos = detail.combos ?? [];
-  const sections = BOARDS.map((b) => ({
-    ...b,
-    cards: cards.filter((c) => c.board === b.key),
-  })).filter((s) => s.cards.length > 0);
   const unresolved = cards.filter((c) => !c.is_resolved);
 
   return (
@@ -69,13 +63,19 @@ export default async function DecklistDetailPage({
         </div>
       )}
 
-      {sections.length === 0 ? (
+      {cards.length === 0 ? (
         <p className="muted" style={{ marginTop: "1rem" }}>
           This deck has no cards yet.
         </p>
       ) : (
         <div style={{ marginTop: "1.5rem" }}>
-          <CardBrowser sections={sections} maxCols={DECK_MAX_COLS} countQuantity searchable={false} />
+          <CardBrowser
+            cards={cards}
+            groupings={DECK_GROUPINGS}
+            maxCols={DECK_MAX_COLS}
+            countQuantity
+            searchable={false}
+          />
         </div>
       )}
 
