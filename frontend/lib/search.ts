@@ -3,7 +3,7 @@
 // bearing: both sides are flattened to lowercase words before they meet.
 //
 // The flattening mirrors the slug the database already generates
-// (schema.sql: regexp_replace(lower(name), '[^a-z0-9]+', '-', 'g')), on a space.
+// (migrations/0001_baseline.sql: regexp_replace(lower(name), '[^a-z0-9]+', '-', 'g')), on a space.
 
 // NFKD splits an accent off its letter (Jötun → Jo + ◌̈) and the combining mark is then
 // dropped by the [^a-z0-9] pass. What it does *not* split are the true ligatures, so

@@ -450,15 +450,16 @@ CREATE TABLE IF NOT EXISTS cube_invites (
 );
 CREATE INDEX IF NOT EXISTS idx_cube_invites_pending ON cube_invites(invitee_id) WHERE status = 'pending';
 
--- Backfill (this schema runs on every boot, so it must be a no-op once applied).
--- owner_id only fills where still null — new cubes set their own owner, so a real owner
--- is never clobbered, and an owner deleted later (SET NULL) is reclaimed by the first
--- admin. Reclaiming ownership grants no membership: site admins already bypass the
--- member check.
---
--- Membership is opt-in, through cube_invites, and nothing here may enroll anyone. A
--- one-time "seed every user into cubes with no members" backfill used to sit here; it
--- ran on every boot, so a cube whose sole owner was deleted (cascading their
--- cube_members row away) was opened to every user on the next deploy.
+-- Backfill (this schema runs on every boot, so both statements must be no-ops once
+-- applied). owner_id only fills where still null — new cubes set their own owner, so a
+-- real owner is never clobbered, and an owner deleted later (SET NULL) is reclaimed by
+-- the first admin. Membership seeds only cubes with *no members yet*: on the first boot
+-- after this migration that is every existing cube (seeded with all users, so nobody
+-- loses prior access); forever after, every cube has at least its owner, so the
+-- CROSS JOIN is skipped and a member an owner removed stays removed.
 UPDATE cubes SET owner_id = (SELECT id FROM users WHERE role = 'admin' ORDER BY created_at LIMIT 1)
     WHERE owner_id IS NULL;
+INSERT INTO cube_members (cube_id, user_id)
+    SELECT c.id, u.id FROM cubes c CROSS JOIN users u
+    WHERE NOT EXISTS (SELECT 1 FROM cube_members m WHERE m.cube_id = c.id)
+    ON CONFLICT DO NOTHING;

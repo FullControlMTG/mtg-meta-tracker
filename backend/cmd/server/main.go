@@ -41,8 +41,8 @@ func main() {
 
 	st := store.New(pool)
 
-	if err := st.EnsureSchema(rootCtx); err != nil {
-		log.Fatalf("ensure schema: %v", err)
+	if err := st.Migrate(rootCtx); err != nil {
+		log.Fatalf("migrate: %v", err)
 	}
 
 	if err := bootstrapAdmin(rootCtx, st, cfg); err != nil {
