@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -101,7 +102,15 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 // deploy overlapping a restart) cannot both apply the same file.
 const migrationLockKey int64 = 7_404_202_611
 
-type pgMigrationDB struct{ conn *pgx.Conn }
+// migrationConn is what the runner executes on: a connection at boot, or the
+// transaction a restore rebuilds the schema in (see Reimport).
+type migrationConn interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	Begin(ctx context.Context) (pgx.Tx, error)
+}
+
+type pgMigrationDB struct{ conn migrationConn }
 
 func (p pgMigrationDB) appliedVersions(ctx context.Context) (map[int]bool, error) {
 	rows, err := p.conn.Query(ctx, `SELECT version FROM schema_migrations`)

@@ -52,6 +52,7 @@ images/         Self-hosted card-image cache.
 moxfield/       Parses a publicId out of a URL. Display metadata only.
 analytics/      Recompute engine (compute.go) + model/ leaf package.
 jobs/           Queue, worker, scheduler.
+dbrestore/      Admin restore API's runner (dump listing, maintenance).
 revalidate/     Client for the Next.js revalidation webhook.
 ```
 
@@ -90,6 +91,11 @@ Images (`docker compose build`, while prod still serves), Backup Database
 the build before anything is torn down), Teardown, Start (`up -d --no-build`),
 Health Check (waits for both containers' Docker healthchecks), Smoke Test. See
 [DESIGN.md](DESIGN.md#deployment).
+
+Restoring prod from one of those dumps is `docker compose run --rm backend restore
+--file /dumps/<file>.dump` (backend stopped) or `POST /api/admin/db/restore`. It
+rebuilds the schema and reimports best-effort; it never runs on deploy. See
+[DESIGN.md](DESIGN.md#flashing-the-database-from-a-dump).
 
 **There is no linter.** `frontend/package.json` defines `"lint": "next lint"`, but
 the repo has no ESLint config and no ESLint dependency, so the script proves

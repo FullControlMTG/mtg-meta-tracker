@@ -42,6 +42,7 @@ session cookie stays same-site and there is no CORS layer.
 | `images` | Downloads and serves card images from a local cache. |
 | `analytics` | Pure `aggregate()` over deck rows plus a persistence/promotion engine. |
 | `jobs` | Postgres-backed queue, a polling worker, and a periodic scheduler. |
+| `dbrestore` | Admin restore API's runner: lists dumps, runs one `store.RestoreDump` in the background with the worker paused. |
 | `revalidate` | Calls the frontend's revalidation webhook after a recompute. |
 
 ## Data flow
@@ -423,7 +424,8 @@ Postgres advisory lock, then applies each file not yet recorded in
 transaction together with its `schema_migrations` row. A failing file rolls back,
 nothing after it runs, and the server exits before it listens. On an empty database
 `store.Migrate` builds the latest schema; it is the entry point for anything that
-needs one, such as restoring a dump.
+needs one. The restore path applies the same files inside its own transaction
+([Flashing the database from a dump](#flashing-the-database-from-a-dump)).
 
 `0001_baseline.sql` is the old `schema.sql`, frozen. Before migrations, that file
 was re-applied on every boot, so every statement had to be idempotent and every
@@ -623,12 +625,64 @@ boots. That makes the dump the last copy of the data from before the change.
   file name rather than mtime, and files that don't match the pattern are left
   alone.
 
-Manual restore, until a restore path exists:
+Restoring one is [Flashing the database from a dump](#flashing-the-database-from-a-dump).
 
-```sh
-docker compose run --rm -T db-dump -c \
-  'pg_restore --clean --if-exists --no-owner -d "$PGDATABASE" /dump/<file>.dump'
-```
+### Flashing the database from a dump
+
+`store.RestoreDump` replaces the database with the contents of any dump, whatever
+schema version wrote it:
+
+1. `pg_restore` the dump, unchanged, into a scratch database `restore_scratch_<ns>`
+   on the same server (created from `template0`, dropped afterwards either way).
+2. In **one transaction** on the target: drop and recreate the current schema
+   (`public` in prod), apply every migration, then copy each table from the
+   scratch database in foreign-key order (`store.Reimport`).
+3. Print or return a report: per table, rows copied and skipped, columns dropped
+   and columns blanked.
+
+Copy rules: only columns in both the dump and the schema are copied. A column the
+schema dropped is discarded; one it added gets its default or NULL; generated
+columns (`cards.slug`, `decklists.winrate`) are recomputed; `schema_migrations`
+is never copied. A renamed column is not detected: it reports as dropped plus
+blanked, and its data is lost. Rows move as `COPY` text, so a widened column type
+still copies. A table is tried in one `COPY`; if that fails it is retried row by
+row under savepoints and the rejected rows (a new `CHECK`, `NOT NULL`, or a foreign
+key to a row that was itself skipped) are skipped and listed, not fatal. Any other
+error rolls the whole transaction back and the live data is untouched. Nothing
+resets sequences, since no table has one; a future `serial` column would need it.
+
+**Never on deploy.** A deploy applies pending migrations in place after the
+pre-deploy dump. The drop-and-reimport cycle silently discards data in dropped or
+renamed columns, so it runs only when an admin asks for it, from one of two
+entry points:
+
+- **CLI**, an ephemeral container that shares the backend image and migrations.
+  Stop the live backend first, so it is not serving or running jobs mid-restore:
+
+  ```sh
+  docker compose stop backend
+  docker compose run --rm backend restore --file /dumps/<file>.dump
+  docker compose start backend
+  ```
+
+  The image's entrypoint is `/server`, so the subcommand is `restore`, not
+  `/server restore`. Dumps written before the backend user could read them are
+  root-owned `0600`; add `--user root` for those.
+- **Admin API**, in the running backend. `GET /api/admin/db/dumps` lists the
+  `*.dump` files in `DUMP_DIR` (default `/dumps`, the dump directory mounted
+  read-only), newest first. `POST /api/admin/db/restore` with
+  `{"dump": "<file>.dump", "confirm": "replace the database"}` starts the restore
+  in the background and returns `202`. While it runs the worker is paused (after
+  its job in flight finishes) and every route except `/api/health` answers `503`.
+  Afterwards `GET /api/admin/db/restore` returns the state and the report. That
+  status lives in memory, not the `jobs` table, which the restore replaces. The
+  `sessions` table is restored too, so the admin may need to sign in again.
+
+Both need `pg_restore` (the backend image installs `postgresql16-client`) and a
+database role that may `CREATE DATABASE`. Jenkins chowns each new dump to the
+backend's uid 10001 so the API can read it. Tests:
+`TestReimportIntoLatestSchema` and `TestRestoreDumpFromPreMigrationSchema`, which
+skips without `pg_dump` and `pg_restore` on PATH.
 
 ## Dependencies
 

@@ -6,7 +6,9 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /server ./cmd/server
 
 FROM alpine:3.20 AS runtime
-RUN apk add --no-cache ca-certificates && adduser -D -u 10001 app
+# postgresql16-client for pg_restore, which `server restore` and the admin restore
+# API shell out to. Its major version must be >= the server's (postgres:16).
+RUN apk add --no-cache ca-certificates postgresql16-client && adduser -D -u 10001 app
 COPY --from=build /server /server
 # Default IMAGE_CACHE_DIR mount point. This chown is what makes the cache
 # writable in production: compose mounts an empty named volume here, and Docker

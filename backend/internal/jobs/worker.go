@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/store"
@@ -16,6 +18,10 @@ type Worker struct {
 	store    *store.Store
 	handlers map[string]Handler
 	interval time.Duration
+
+	// mu is held for a whole drain, so Pause can wait out the job in flight.
+	mu     sync.Mutex
+	paused atomic.Bool
 }
 
 func NewWorker(s *store.Store, pollInterval time.Duration) *Worker {
@@ -23,6 +29,16 @@ func NewWorker(s *store.Store, pollInterval time.Duration) *Worker {
 }
 
 func (w *Worker) Register(jobType string, h Handler) { w.handlers[jobType] = h }
+
+// Pause stops the worker claiming jobs and returns once the job in flight, if
+// any, has finished. A database restore needs the worker off the tables it drops.
+func (w *Worker) Pause() {
+	w.paused.Store(true)
+	w.mu.Lock()
+	w.mu.Unlock()
+}
+
+func (w *Worker) Resume() { w.paused.Store(false) }
 
 func (w *Worker) Run(ctx context.Context) {
 	ticker := time.NewTicker(w.interval)
@@ -38,7 +54,9 @@ func (w *Worker) Run(ctx context.Context) {
 }
 
 func (w *Worker) drain(ctx context.Context) {
-	for {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for !w.paused.Load() {
 		job, err := w.store.ClaimNextJob(ctx)
 		if errors.Is(err, store.ErrNotFound) {
 			return

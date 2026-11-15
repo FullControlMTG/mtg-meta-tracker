@@ -67,6 +67,9 @@ services:
       SESSION_COOKIE_SECURE: "true"
     volumes:
       - card-images:/data/images
+      # Read-only: the backend restores from the pre-deploy dumps (DUMP_DIR,
+      # default /dumps) but never writes them; Jenkins' db-dump does.
+      - /pwspool/software/mtg-meta-tracker/dump:/dumps:ro
     depends_on:
       db:
         condition: service_healthy

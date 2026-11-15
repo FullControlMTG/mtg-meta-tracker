@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -16,6 +18,7 @@ import (
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/analytics"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/auth"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/config"
+	"github.com/runyanjake/mtg-meta-tracker/backend/internal/dbrestore"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/decklist"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/domain"
 	"github.com/runyanjake/mtg-meta-tracker/backend/internal/httpapi"
@@ -37,6 +40,10 @@ func main() {
 	defer pool.Close()
 	if err := pool.Ping(rootCtx); err != nil {
 		log.Fatalf("db ping: %v", err)
+	}
+
+	if len(os.Args) > 1 && os.Args[1] == "restore" {
+		os.Exit(runRestore(rootCtx, pool, os.Args[2:]))
 	}
 
 	st := store.New(pool)
@@ -95,12 +102,14 @@ func main() {
 	})
 	go worker.Run(workerCtx)
 
+	restorer := dbrestore.NewRunner(pool, cfg.DumpDir, worker.Pause, worker.Resume)
+
 	scheduler := jobs.NewScheduler(st, cfg.SyncInterval)
 	go scheduler.Run(workerCtx)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.New(st, cfg, resolver, imgCache).Router(),
+		Handler:           httpapi.New(st, cfg, resolver, imgCache, restorer).Router(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
@@ -118,6 +127,26 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(shutdownCtx)
+}
+
+// runRestore is `server restore --file <dump>`: flash the database from a dump and
+// print the reimport report. It skips the boot-time Migrate on purpose — the
+// restore rebuilds the schema itself — and must never run as part of a deploy.
+func runRestore(ctx context.Context, pool *pgxpool.Pool, args []string) int {
+	fs := flag.NewFlagSet("restore", flag.ExitOnError)
+	file := fs.String("file", "", "pg_dump -Fc file to restore, e.g. /dumps/<name>.dump")
+	_ = fs.Parse(args)
+	if *file == "" {
+		fmt.Fprintln(os.Stderr, "usage: server restore --file /dumps/<name>.dump")
+		return 2
+	}
+	report, err := store.RestoreDump(ctx, pool, *file)
+	if err != nil {
+		log.Printf("restore failed; the database is unchanged: %v", err)
+		return 1
+	}
+	report.WriteText(os.Stdout)
+	return 0
 }
 
 func bootstrapAdmin(ctx context.Context, st *store.Store, cfg config.Config) error {
